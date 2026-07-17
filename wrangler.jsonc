@@ -1,0 +1,36 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "relay",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-07-17",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SECRET_OBJECT",
+        "class_name": "SecretObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SecretObject"]
+    }
+  ],
+  "vars": {
+    "APP_NAME": "Relay",
+    "ACCENT_COLOR": "#247a3b",
+    "TOOL_VERSION": "v1.0.0",
+    "TOOL_RELEASE_BASE_URL": "https://relay.example/tools/v1.0.0",
+    "TOOL_SHA256_LINUX_AMD64": "configure-at-deploy",
+    "TOOL_SHA256_LINUX_ARM64": "configure-at-deploy",
+    "TOOL_SHA256_DARWIN_AMD64": "configure-at-deploy",
+    "TOOL_SHA256_DARWIN_ARM64": "configure-at-deploy",
+    "TOOL_SHA256_WINDOWS_AMD64": "configure-at-deploy"
+  }
+}

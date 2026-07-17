@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "aad": "relay/v1;envelope",
+  "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "nonce": "EBESExQVFhcYGRob",
+  "envelope": {
+    "v": 1,
+    "kind": "text",
+    "name": "secret.txt",
+    "mediaType": "text/plain; charset=utf-8",
+    "data": "cmVsYXktaW50ZXJvcGVyYWJpbGl0eQ"
+  },
+  "ciphertext": "BtzuNHP4FpGhHGZ5LUNLJ7IoOiw34DnQipzAXXwnMbgijCMtgd4azVIU_zTu8XJPaswiUdmpLZfEahVBn_bNBT7YXEsozHhRGb1Air7s0JwRm_bMEvxwAKKTTUmd3bt-CGYZg4LwI9sYapYlFSSF2CWor0rY2qjdy8DPR3ehi7SFlcFYVVEq7Z8"
+}
