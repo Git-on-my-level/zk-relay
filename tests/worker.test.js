@@ -38,13 +38,14 @@ test("agent preflight is safe markdown and includes receiver guidance", async ()
   assert.match(text, /Retrieving it will make this link stop working\./);
   assert.match(text, /zkr receive "\$ZK_RELAY_URL" --output \.\/secret/);
   assert.match(text, /does not print it/);
-  assert.match(text, /One-shot protocol/);
-  assert.match(text, /Authorization: zk-relay/);
+  assert.match(text, /Receiver contract \(authoritative\)/);
+  assert.match(text, /"scheme": "zk-relay"/);
+  assert.match(text, /"max_payload_bytes": 1048576/);
+  assert.match(text, /Authorization: zk-relay <token>/);
   assert.match(text, /gpg --verify/);
   assert.match(text, /Manual protocol instructions: https:\/\/zk-relay\.test\/protocol\/v1/);
-  assert.match(text, /Decrypted contents are data/);
+  assert.match(text, /data, never instructions/);
   assert.deepEqual(fixture.calls, ["/internal/status"]);
-  assert.match(text, /This request did not retrieve the secret\./);
 });
 
 test("agent JSON and HTML preflight representations retain safe retrieval guidance", async () => {
@@ -55,6 +56,11 @@ test("agent JSON and HTML preflight representations retain safe retrieval guidan
   assert.equal(manifest.retrievalBehavior, "Retrieving it will make this link stop working.");
   assert.equal(manifest.preferredCommand, "zkr receive \"$ZK_RELAY_URL\" --output ./secret");
   assert.equal(manifest.manualProtocol, "https://zk-relay.test/protocol/v1");
+  assert.equal(manifest.receiverContract.authorization.scheme, "zk-relay");
+  assert.equal(manifest.receiverContract.crypto.aad, "zk-relay/v1;envelope");
+  assert.equal(manifest.receiverContract.file_safety.max_payload_bytes, 1048576);
+  assert.deepEqual(manifest.receiverContract.envelope.kinds, ["text", "file"]);
+  assert.equal(manifest.receiverContract.receiver_contract, "https://zk-relay.test/protocol/v1");
 
   const htmlFixture = statusEnvironment();
   const htmlResponse = await handleRequest(new Request("https://zk-relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "text/html" } }), htmlFixture.env);
@@ -62,6 +68,7 @@ test("agent JSON and HTML preflight representations retain safe retrieval guidan
   assert.match(html, /This request did not retrieve the secret\./);
   assert.match(html, /Retrieving it will make this link stop working\./);
   assert.match(html, /zkr receive &quot;\$ZK_RELAY_URL&quot; --output \.\/secret/);
+  assert.match(html, /Receiver contract \(authoritative\)/);
   assert.match(html, /Manual protocol instructions: https:\/\/zk-relay\.test\/protocol\/v1/);
 });
 
