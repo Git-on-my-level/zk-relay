@@ -4,18 +4,30 @@ ZK Relay is a small, self-hosted Cloudflare Worker for sending one encrypted tex
 
 ZK Relay has no accounts, analytics, browser SDKs, third-party browser runtime code, external database, or always-on server. It uses one Worker and one SQLite-backed Durable Object per secret.
 
-## What a recipient does
+> [!TIP]
+> **Try it first:** [https://zkr.scalingforever.com](https://zkr.scalingforever.com)
 
-- A human opens `/h/:id`, safely reads the warning, and explicitly chooses **Reveal secret**. Decryption happens in that browser.
-- An agent can safely `curl` `/a/:id`. It receives preflight instructions, not ciphertext. The preferred command is:
+## Yopass alternative for agents
 
-  ```sh
-  zkr receive "$ZK_RELAY_URL" --output ./secret
-  ```
+Yopass-style tools work well for humans, but agents often `curl` a link and dump the body into a transcript. ZK Relay’s agent link (`/a/:id`) returns preflight instructions only — never ciphertext — and points at a verified local receiver:
 
-  The receiver decrypts locally and writes an owner-only local file. It never prints plaintext by default. Plaintext stdout is deliberately gated behind `--stdout --allow-plaintext-stdout` and a transcript-risk warning.
+```sh
+zkr receive "$ZK_RELAY_URL" --output ./secret
+```
 
-  The official receiver accepts only complete `https://` agent links. When an explicit `--output` target is unsafe or already exists without `--force`, it rejects that target before claiming a potentially one-time secret.
+The receiver decrypts on disk and does not print plaintext by default. That is the main reason to pick ZK Relay over a generic one-time secret pastebin when the recipient might be an LLM agent.
+
+## Agent receive
+
+- An agent can safely `curl` `/a/:id`. It receives preflight instructions, not ciphertext.
+- Preferred command: `zkr receive "$ZK_RELAY_URL" --output ./secret`
+- Official receiver contract: [`/protocol/v1`](protocol/v1.md)
+- Plaintext stdout is gated behind `--stdout --allow-plaintext-stdout` with a transcript-risk warning
+- The official receiver accepts only complete `https://` agent links and rejects unsafe `--output` targets before claiming a one-time secret
+
+## What a human recipient does
+
+A human opens `/h/:id`, safely reads the warning, and explicitly chooses **Reveal secret**. Decryption happens in that browser.
 
 By default, a secret can be revealed many times until its time limit. Enable **Secret expires after being revealed** for one-shot retrieval. The available limits are 1 hour, 1 day, and 7 days.
 

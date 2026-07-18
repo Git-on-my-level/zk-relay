@@ -71,6 +71,7 @@ test("agent JSON and HTML preflight representations retain safe retrieval guidan
   assert.match(html, /zkr receive &quot;\$ZK_RELAY_URL&quot; --output \.\/secret/);
   assert.match(html, /Receiver contract \(authoritative\)/);
   assert.match(html, /Manual protocol instructions: https:\/\/zk-relay\.test\/protocol\/v1/);
+  assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
 });
 
 test("safe status route does not pass authorization and bad create is rejected before storage", async () => {
@@ -99,6 +100,47 @@ test("agent copy is project-authored and does not interpolate sender content", (
   });
   assert.match(copy, /leave the encrypted secret available until it expires/);
   assert.doesNotMatch(copy, /sender/i);
+});
+
+test("home shell is indexable; human secret shell is not", async () => {
+  const indexHtml = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  const env = {
+    APP_NAME: "ZK Relay",
+    ACCENT_COLOR: "#247a3b",
+    ASSETS: {
+      fetch: async () => new Response(indexHtml, { status: 200, headers: { "content-type": "text/html" } })
+    }
+  };
+
+  const home = await handleRequest(new Request("https://zk-relay.test/"), env);
+  const homeHtml = await home.text();
+  assert.equal(home.status, 200);
+  assert.match(homeHtml, /<meta name="robots" content="index,follow">/);
+  assert.match(homeHtml, /<link rel="canonical" href="https:\/\/zk-relay\.test\/">/);
+  assert.match(homeHtml, /Yopass-style alternative with agent-safe receive/);
+  assert.match(homeHtml, /<title>ZK Relay — secret sharing for humans and agents<\/title>/);
+  assert.match(homeHtml, /property="og:title"/);
+
+  const human = await handleRequest(new Request("https://zk-relay.test/h/abcdefghijklmnopqrstuv"), env);
+  const humanHtml = await human.text();
+  assert.equal(human.status, 200);
+  assert.match(humanHtml, /<meta name="robots" content="noindex,nofollow">/);
+  assert.match(humanHtml, /<title>ZK Relay — encrypted secret<\/title>/);
+  assert.match(humanHtml, /<link rel="canonical" href="https:\/\/zk-relay\.test\/">/);
+});
+
+test("robots.txt and llms.txt advertise the product without secret routes", async () => {
+  const [robots, llms] = await Promise.all([
+    readFile(new URL("../public/robots.txt", import.meta.url), "utf8"),
+    readFile(new URL("../public/llms.txt", import.meta.url), "utf8")
+  ]);
+  assert.match(robots, /Allow: \//);
+  assert.match(robots, /Disallow: \/h\//);
+  assert.match(robots, /Disallow: \/a\//);
+  assert.match(robots, /Disallow: \/api\//);
+  assert.match(llms, /Yopass-style/);
+  assert.match(llms, /zkr receive "\$ZK_RELAY_URL" --output \.\/secret/);
+  assert.match(llms, /\/protocol\/v1/);
 });
 
 test("static UI preserves locked labels and never renders secrets with innerHTML", async () => {

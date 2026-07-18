@@ -68,13 +68,32 @@ async function secureObjectResponse(promise) {
   }
 }
 
+function shellSeo(request, env) {
+  const url = new URL(request.url);
+  const name = appName(env);
+  const isHome = url.pathname === "/";
+  const description = `${name} is self-hosted zero-knowledge secret sharing for people and agents — a Yopass-style alternative with agent-safe receive.`;
+  return {
+    name,
+    title: isHome ? `${name} — secret sharing for humans and agents` : `${name} — encrypted secret`,
+    description,
+    robots: isHome ? "index,follow" : "noindex,nofollow",
+    canonical: `${url.origin}/`
+  };
+}
+
 async function serveShell(request, env) {
   try {
     const index = await env.ASSETS.fetch(new Request(new URL("/index.html", request.url)));
     if (!index.ok) return response("Service unavailable", 503, { "content-type": "text/plain; charset=utf-8" });
+    const seo = shellSeo(request, env);
     const html = (await index.text())
-      .replaceAll("__ZK_RELAY_APP_NAME__", escapeHtml(appName(env)))
-      .replaceAll("__ZK_RELAY_ACCENT_COLOR__", accentColor(env));
+      .replaceAll("__ZK_RELAY_APP_NAME__", escapeHtml(seo.name))
+      .replaceAll("__ZK_RELAY_ACCENT_COLOR__", accentColor(env))
+      .replaceAll("__ZK_RELAY_TITLE__", escapeHtml(seo.title))
+      .replaceAll("__ZK_RELAY_DESCRIPTION__", escapeHtml(seo.description))
+      .replaceAll("__ZK_RELAY_ROBOTS__", seo.robots)
+      .replaceAll("__ZK_RELAY_CANONICAL__", escapeHtml(seo.canonical));
     return response(html, 200, { "content-type": "text/html; charset=utf-8" });
   } catch {
     return response("Service unavailable", 503, { "content-type": "text/plain; charset=utf-8" });
@@ -279,7 +298,7 @@ export function agentManifest(origin, status, tools) {
 }
 
 function agentHtml(origin, status, tools) {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Encrypted secret</title></head><body><main><pre>${escapeHtml(agentMarkdown(origin, status, tools))}</pre></main></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>Encrypted secret</title></head><body><main><pre>${escapeHtml(agentMarkdown(origin, status, tools))}</pre></main></body></html>`;
 }
 
 async function agentPreflight(request, env, id) {

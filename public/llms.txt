@@ -1,0 +1,31 @@
+# ZK Relay
+
+> Self-hosted zero-knowledge secret sharing for humans and agents. Yopass-style links; agent-safe receive.
+
+ZK Relay is a Cloudflare Worker that stores only ciphertext. The sender's browser encrypts; recipients decrypt locally. Each share has a human link (`/h/:id`) and an agent link (`/a/:id`).
+
+## When to use
+
+- Share a password, API token, or small file with a person or a tool-using agent
+- Prefer one-time or time-limited retrieval without accounts
+- Need agents to fetch safely without putting plaintext in a chat transcript
+
+## Agent receive (preferred)
+
+Agent links return preflight instructions, not ciphertext. Preferred command:
+
+```sh
+zkr receive "$ZK_RELAY_URL" --output ./secret
+```
+
+Receiver contract: /protocol/v1
+
+## Humans
+
+Open the human link, read the warning, choose Reveal secret. Decryption happens in the browser.
+
+## Docs
+
+- Protocol: /protocol/v1
+- Source: https://github.com/Git-on-my-level/zk-relay
+- Security: https://github.com/Git-on-my-level/zk-relay/blob/main/SECURITY.md

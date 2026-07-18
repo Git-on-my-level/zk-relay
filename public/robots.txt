@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Allow: /protocol/
+Allow: /llms.txt
+Disallow: /h/
+Disallow: /a/
+Disallow: /api/
+Disallow: /tools/
