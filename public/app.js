@@ -296,8 +296,8 @@ async function copyValue(value, input, revealForFallback = null) {
 
 function syncExpireLabel() {
   elements.expireLabel.textContent = elements.expireAfterReveal.checked
-    ? "Secret expires after being revealed"
-    : "Secret can be revealed many times";
+    ? "Expire on: Secret expires after being revealed"
+    : "Expire off: Secret can be revealed many times";
 }
 
 function setResultText(value) {
