@@ -326,7 +326,7 @@ async function revealHumanSecret(id) {
   try {
     const result = await fetch(`/api/v1/secrets/${encodeURIComponent(id)}/reveal`, {
       method: "POST",
-      headers: { authorization: `Relay ${capability.tokenText}`, accept: "application/vnd.relay.encrypted+json" },
+      headers: { authorization: `ZKRelay ${capability.tokenText}`, accept: "application/vnd.zk-relay.encrypted+json" },
       cache: "no-store"
     });
     if (!result.ok) throw new Error("The secret is no longer available.");

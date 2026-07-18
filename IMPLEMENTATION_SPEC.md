@@ -1,4 +1,4 @@
-# Relay: implementation specification
+# ZK Relay: implementation specification
 
 Status: implementation handoff  
 Target: open-source, self-hostable Cloudflare application  
@@ -289,7 +289,7 @@ revealed.
 The agent receives an Agent friendly link such as:
 
 ```text
-https://relay.example/a/SECRET_ID#v1.DECRYPTION_KEY.ACCESS_TOKEN
+https://zk-relay.example/a/SECRET_ID#v1.DECRYPTION_KEY.ACCESS_TOKEN
 ```
 
 The fragment is intentionally absent from HTTP requests. The agent must retain
@@ -300,7 +300,7 @@ does not claim ciphertext. Prefer Markdown with YAML front matter:
 
 ```markdown
 ---
-protocol: relay/v1
+protocol: zk-relay/v1
 available: true
 expires_at: 2026-07-16T20:00:00Z
 expires_after_reveal: true
@@ -314,9 +314,9 @@ This request did not retrieve the secret.
 Retrieving it will make this link stop working. The preferred receiver saves
 the decrypted value to a local file and does not print it.
 
-relay receive "$RELAY_URL" --output ./secret
+zkr receive "$ZK_RELAY_URL" --output ./secret
 
-Manual protocol instructions: https://relay.example/protocol/v1
+Manual protocol instructions: https://zk-relay.example/protocol/v1
 ```
 
 The exact wording may substitute the non-removing behavior when the toggle was
@@ -336,13 +336,13 @@ The receiver tool then:
 Default command:
 
 ```sh
-relay receive "$RELAY_URL" --output ./secret
+zkr receive "$ZK_RELAY_URL" --output ./secret
 ```
 
 Plaintext stdout is an explicit fallback only:
 
 ```sh
-relay receive "$RELAY_URL" --stdout --allow-plaintext-stdout
+zkr receive "$ZK_RELAY_URL" --stdout --allow-plaintext-stdout
 ```
 
 The tool must display a transcript-risk warning before using stdout. Never
@@ -570,8 +570,8 @@ Use coarse error states to avoid unnecessary information disclosure.
 
 ```http
 POST /api/v1/secrets/:id/reveal
-Authorization: Relay BASE64URL_ACCESS_TOKEN
-Accept: application/vnd.relay.encrypted+json
+Authorization: ZKRelay BASE64URL_ACCESS_TOKEN
+Accept: application/vnd.zk-relay.encrypted+json
 ```
 
 Return the encrypted container only after access-token validation and the
@@ -639,7 +639,7 @@ A compact monorepo is acceptable:
     app.js
     styles.css
     icons.svg
-  cmd/relay/
+  cmd/zkr/
     main.go
   protocol/
     v1.md
@@ -773,11 +773,11 @@ Another agent must not:
 These decisions were not explicitly finalized. Keep them configurable or ask
 before committing:
 
-1. **Final product name.** “Relay” is the working mockup name, not a confirmed
-   trademark/domain decision.
+1. **Final product name.** ZK Relay is the confirmed working product name; the final
+   domain remains configurable.
 2. **Open-source license.** The product must be open source, but MIT versus
    Apache-2.0 was not selected.
-3. **Final domain and release host.** Examples use `relay.example`.
+3. **Final domain and release host.** Examples use `zk-relay.example`; configure an owned domain before deployment.
 4. **Maximum payload beyond MVP.** The MVP is prescribed at 1 MiB to fit
    Durable Object limits cheaply; do not add R2 without approval.
 5. **Brand mark.** The geometric broken-key symbol is a direction, not a

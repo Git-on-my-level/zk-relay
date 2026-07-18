@@ -22,7 +22,7 @@ test("browser decrypts the shared receiver-compatible v1 vector", async () => {
     { v: envelope.v, kind: envelope.kind, name: envelope.name, mediaType: envelope.mediaType, data: envelope.data },
     vector.envelope
   );
-  assert.equal(new TextDecoder().decode(envelope.bytes), "relay-interoperability");
+  assert.equal(new TextDecoder().decode(envelope.bytes), "zk-relay-interoperability");
   envelope.bytes.fill(0);
 });
 
@@ -33,7 +33,7 @@ test("modified encrypted fields fail authentication without plaintext", async ()
     /authenticate/
   );
   await assert.rejects(
-    decryptContainer({ v: 1, ciphertext: vector.ciphertext, nonce: vector.nonce, aad: "relay/v1;other" }, base64UrlToBytes(vector.key)),
+    decryptContainer({ v: 1, ciphertext: vector.ciphertext, nonce: vector.nonce, aad: "zk-relay/v1;other" }, base64UrlToBytes(vector.key)),
     /Unsupported/
   );
   const badNonce = `${vector.nonce.slice(0, -1)}${vector.nonce.endsWith("A") ? "B" : "A"}`;

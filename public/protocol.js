@@ -1,5 +1,5 @@
 export const PROTOCOL_VERSION = 1;
-export const AAD_TEXT = "relay/v1;envelope";
+export const AAD_TEXT = "zk-relay/v1;envelope";
 export const MAX_PAYLOAD_BYTES = 1024 * 1024;
 // The encrypted envelope is kept below the Durable Object per-value limit.
 // A 1 MiB payload plus its JSON/base64 envelope fits comfortably within this.

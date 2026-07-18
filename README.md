@@ -1,8 +1,8 @@
-# Relay
+# ZK Relay
 
-Relay is a small, self-hosted Cloudflare Worker for sending one encrypted text value or file to a person or a tool-using agent. The sender’s browser encrypts the payload; Cloudflare stores only ciphertext. A share produces a human link and an agent link for the same secret.
+ZK Relay is a small, self-hosted Cloudflare Worker for sending one encrypted text value or file to a person or a tool-using agent. The sender’s browser encrypts the payload; Cloudflare stores only ciphertext. A share produces a human link and an agent link for the same secret.
 
-Relay has no accounts, analytics, browser SDKs, third-party browser runtime code, external database, or always-on server. It uses one Worker and one SQLite-backed Durable Object per secret.
+ZK Relay has no accounts, analytics, browser SDKs, third-party browser runtime code, external database, or always-on server. It uses one Worker and one SQLite-backed Durable Object per secret.
 
 ## What a recipient does
 
@@ -10,7 +10,7 @@ Relay has no accounts, analytics, browser SDKs, third-party browser runtime code
 - An agent can safely `curl` `/a/:id`. It receives preflight instructions, not ciphertext. The preferred command is:
 
   ```sh
-  relay receive "$RELAY_URL" --output ./secret
+  zkr receive "$ZK_RELAY_URL" --output ./secret
   ```
 
   The receiver decrypts locally and writes an owner-only local file. It never prints plaintext by default. Plaintext stdout is deliberately gated behind `--stdout --allow-plaintext-stdout` and a transcript-risk warning.
@@ -48,7 +48,7 @@ All non-secret settings are in `wrangler.jsonc` under `vars`:
 
 Set an actual HTTPS release base and all five checksums before making the agent link available. The preflight response exposes these values so an agent can verify a stable receiver rather than executing network-provided code.
 
-`Relay` is a configurable working name, not a claimed trademark. The project also intentionally does not select a software license: choose and add an approved open-source license before public redistribution.
+`ZK Relay` is a configurable working name, not a claimed trademark. The project also intentionally does not select a software license: choose and add an approved open-source license before public redistribution.
 
 ## Publishing the receiver
 
@@ -78,7 +78,7 @@ Use a local secret only for development. Share URLs include capabilities in thei
 ## Architecture and privacy model
 
 1. The browser generates independent random 32-byte AES key `K` and access token `T`.
-2. It encrypts a versioned JSON envelope with AES-256-GCM, 12-byte random nonce, and UTF-8 AAD `relay/v1;envelope`.
+2. It encrypts a versioned JSON envelope with AES-256-GCM, 12-byte random nonce, and UTF-8 AAD `zk-relay/v1;envelope`.
 3. It uploads ciphertext, nonce, `SHA-256(T)`, expiry, and removal behavior. It never uploads `K`, `T`, plaintext, or filename.
 4. It constructs `/h/:id#v1.K.T` and `/a/:id#v1.K.T` locally. Fragments are not sent in HTTP requests.
 5. A Durable Object validates `T` only for an explicit reveal. A removing secret is atomically replaced with a tombstone before ciphertext is returned, so exactly one concurrent reveal succeeds.
@@ -87,14 +87,14 @@ Each object has a SQLite row containing ciphertext, nonce, AAD metadata, token h
 
 Creation is protected by a best-effort, per-isolate global rate bucket without storing client identity. Invalid reveal attempts are rate-limited per secret; no IP address is retained. These controls are abuse friction, not a substitute for a dedicated edge rate-limiting product if an operator expects hostile, large-scale traffic.
 
-All secret routes return `Cache-Control: no-store, max-age=0`. The Worker sets a strict self-only CSP, `frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and a restrictive Permissions Policy. Relay does not register a service worker and contains no telemetry or runtime third-party dependencies.
+All secret routes return `Cache-Control: no-store, max-age=0`. The Worker sets a strict self-only CSP, `frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, and a restrictive Permissions Policy. ZK Relay does not register a service worker and contains no telemetry or runtime third-party dependencies.
 
 ## Operational limits and behavior
 
 - One UTF-8 text value **or** one file per secret; maximum plaintext payload: 1 MiB.
 - The encrypted container is capped below the Durable Object SQLite 2 MB row limit.
 - Expired secrets are unavailable even if an alarm is delayed.
-- A successful removing reveal followed by a connection failure can leave the recipient without ciphertext. This is the intentional strict single-reveal tradeoff; Relay has no retry lease or acknowledgement mechanism.
+- A successful removing reveal followed by a connection failure can leave the recipient without ciphertext. This is the intentional strict single-reveal tradeoff; ZK Relay has no retry lease or acknowledgement mechanism.
 - Availability depends on Cloudflare Workers and Durable Objects. Object failures fail closed rather than returning a partial result.
 
 ## Manual receivers and protocol

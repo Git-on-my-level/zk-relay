@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "relay",
+  "name": "zk-relay",
   "main": "src/worker.js",
   "compatibility_date": "2026-07-17",
   "assets": {
@@ -23,10 +23,10 @@
     }
   ],
   "vars": {
-    "APP_NAME": "Relay",
+    "APP_NAME": "ZK Relay",
     "ACCENT_COLOR": "#247a3b",
     "TOOL_VERSION": "v1.0.0",
-    "TOOL_RELEASE_BASE_URL": "https://relay.example/tools/v1.0.0",
+    "TOOL_RELEASE_BASE_URL": "https://zk-relay.example/tools/v1.0.0",
     "TOOL_SHA256_LINUX_AMD64": "configure-at-deploy",
     "TOOL_SHA256_LINUX_ARM64": "configure-at-deploy",
     "TOOL_SHA256_DARWIN_AMD64": "configure-at-deploy",

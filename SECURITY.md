@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Until the project has a configured security contact, report a vulnerability to the repository owner through a private channel. Do not open a public issue. Include a minimal reproduction with synthetic data only. Never include a live Relay URL fragment, access token, decryption key, ciphertext from a live secret, or plaintext.
+Until the project has a configured security contact, report a vulnerability to the repository owner through a private channel. Do not open a public issue. Include a minimal reproduction with synthetic data only. Never include a live ZK Relay URL fragment, access token, decryption key, ciphertext from a live secret, or plaintext.
 
 ## Security properties
 
@@ -15,11 +15,11 @@ Until the project has a configured security contact, report a vulnerability to t
 
 ## Important limitations
 
-Relay is capability-based, not identity-based. Anyone with a complete URL can attempt retrieval. A recipient can copy plaintext after decryption. An endpoint or browser compromised before local decryption can access the plaintext. The Worker cannot protect a URL fragment that is pasted into an untrusted log or agent transcript.
+ZK Relay is capability-based, not identity-based. Anyone with a complete URL can attempt retrieval. A recipient can copy plaintext after decryption. An endpoint or browser compromised before local decryption can access the plaintext. The Worker cannot protect a URL fragment that is pasted into an untrusted log or agent transcript.
 
 For removing secrets, a network failure after the server has made the atomic claim can make the payload permanently unavailable. This is intentional and prevents retry races; there is no delivery acknowledgement.
 
-Garbage-collected browser JavaScript cannot promise perfect memory erasure. Relay clears sensitive byte arrays and page state where practical but does not claim stronger guarantees.
+Garbage-collected browser JavaScript cannot promise perfect memory erasure. ZK Relay clears sensitive byte arrays and page state where practical but does not claim stronger guarantees.
 
 ## Deployment checklist
 

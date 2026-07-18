@@ -74,7 +74,7 @@ async function accessTokenHash(tokenText) {
 }
 
 async function create(object, { expireAfterReveal = true, expiresInSeconds = 3600 } = {}) {
-  const response = await object.fetch(new Request("https://relay.internal/internal/create", {
+  const response = await object.fetch(new Request("https://zk-relay.internal/internal/create", {
     method: "POST",
     body: JSON.stringify({
       v: 1,
@@ -91,7 +91,7 @@ async function create(object, { expireAfterReveal = true, expiresInSeconds = 360
 test("safe status does not return or remove ciphertext", async () => {
   const { object, sql } = objectFixture();
   await create(object);
-  const response = await object.fetch(new Request("https://relay.internal/internal/status"));
+  const response = await object.fetch(new Request("https://zk-relay.internal/internal/status"));
   const status = await response.json();
   assert.equal(status.state, "available");
   assert.equal("ciphertext" in status, false);
@@ -101,9 +101,9 @@ test("safe status does not return or remove ciphertext", async () => {
 test("invalid access tokens do not reveal or remove ciphertext", async () => {
   const { object, sql } = objectFixture();
   await create(object);
-  const response = await object.fetch(new Request("https://relay.internal/internal/reveal", {
+  const response = await object.fetch(new Request("https://zk-relay.internal/internal/reveal", {
     method: "POST",
-    headers: { authorization: "Relay AAECAwQFBgcICQoLDA0ODw" }
+    headers: { authorization: "ZKRelay AAECAwQFBgcICQoLDA0ODw" }
   }));
   assert.equal(response.status, 404);
   assert.equal(sql.record.ciphertext, vector.ciphertext);
@@ -113,9 +113,9 @@ test("invalid access tokens do not reveal or remove ciphertext", async () => {
 test("two simultaneous removing reveals produce one encrypted response", async () => {
   const { object, sql } = objectFixture();
   await create(object, { expireAfterReveal: true });
-  const reveal = () => object.fetch(new Request("https://relay.internal/internal/reveal", {
+  const reveal = () => object.fetch(new Request("https://zk-relay.internal/internal/reveal", {
     method: "POST",
-    headers: { authorization: `Relay ${vector.key}` }
+    headers: { authorization: `ZKRelay ${vector.key}` }
   }));
   const responses = await Promise.all([reveal(), reveal()]);
   const statuses = responses.map((response) => response.status).sort();
@@ -132,9 +132,9 @@ test("non-removing reveal can return ciphertext repeatedly", async () => {
   const { object, sql } = objectFixture();
   await create(object, { expireAfterReveal: false });
   for (let index = 0; index < 2; index += 1) {
-    const response = await object.fetch(new Request("https://relay.internal/internal/reveal", {
+    const response = await object.fetch(new Request("https://zk-relay.internal/internal/reveal", {
       method: "POST",
-      headers: { authorization: `Relay ${vector.key}` }
+      headers: { authorization: `ZKRelay ${vector.key}` }
     }));
     assert.equal(response.status, 200);
   }
@@ -145,7 +145,7 @@ test("expired state is unavailable even before its alarm runs", async () => {
   const { object, sql } = objectFixture();
   await create(object);
   sql.record.expires_at = Date.now() - 1;
-  const response = await object.fetch(new Request("https://relay.internal/internal/status"));
+  const response = await object.fetch(new Request("https://zk-relay.internal/internal/status"));
   assert.equal(response.status, 410);
   assert.equal(sql.record, null);
 });

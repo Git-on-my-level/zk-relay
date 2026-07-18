@@ -1,6 +1,6 @@
 {
   "v": 1,
-  "aad": "relay/v1;envelope",
+  "aad": "zk-relay/v1;envelope",
   "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
   "nonce": "EBESExQVFhcYGRob",
   "envelope": {
@@ -8,7 +8,7 @@
     "kind": "text",
     "name": "secret.txt",
     "mediaType": "text/plain; charset=utf-8",
-    "data": "cmVsYXktaW50ZXJvcGVyYWJpbGl0eQ"
+    "data": "emstcmVsYXktaW50ZXJvcGVyYWJpbGl0eQ"
   },
-  "ciphertext": "BtzuNHP4FpGhHGZ5LUNLJ7IoOiw34DnQipzAXXwnMbgijCMtgd4azVIU_zTu8XJPaswiUdmpLZfEahVBn_bNBT7YXEsozHhRGb1Air7s0JwRm_bMEvxwAKKTTUmd3bt-CGYZg4LwI9sYapYlFSSF2CWor0rY2qjdy8DPR3ehi7SFlcFYVVEq7Z8"
+  "ciphertext": "BtzuNHP4FpGhHGZ5LUNLJ7IoOiw34DnQipzAXXwnMbgijCMtgd4azVIU_zTu8XJPaswiUdmpLZfEahVBn_bNBT7YXEsozHhRGb1Air7s0JwRm_bMEvxwAKKVTWya545DD14W3cbLLKReU4k5Gh6VxCyTv2yY3b6ThpuKwQJWGJSJEOrvnz_wskNDeGG6"
 }

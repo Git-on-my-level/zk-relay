@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	protocolAAD       = "relay/v1;envelope"
+	protocolAAD       = "zk-relay/v1;envelope"
 	maxContainerBytes = 1_450_000
 )
 
@@ -62,11 +62,11 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "receive" {
-		fmt.Fprintln(stderr, "Usage: relay receive \"$RELAY_URL\" --output ./secret")
+		fmt.Fprintln(stderr, "Usage: zkr receive \"$ZK_RELAY_URL\" --output ./secret")
 		return 2
 	}
 	if len(args) < 2 {
-		fmt.Fprintln(stderr, "A complete Relay URL is required.")
+		fmt.Fprintln(stderr, "A complete ZK Relay URL is required.")
 		return 2
 	}
 
@@ -94,7 +94,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	cap, err := parseRelayURL(args[1])
 	if err != nil {
-		fmt.Fprintln(stderr, "The Relay URL is invalid.")
+		fmt.Fprintln(stderr, "The ZK Relay URL is invalid.")
 		return 2
 	}
 	defer zero(cap.key)
@@ -223,8 +223,8 @@ func claim(client *http.Client, cap capability) (encryptedContainer, error) {
 	if err != nil {
 		return encryptedContainer{}, err
 	}
-	request.Header.Set("Authorization", "Relay "+cap.tokenText)
-	request.Header.Set("Accept", "application/vnd.relay.encrypted+json")
+	request.Header.Set("Authorization", "ZKRelay "+cap.tokenText)
+	request.Header.Set("Accept", "application/vnd.zk-relay.encrypted+json")
 	response, err := client.Do(request)
 	if err != nil {
 		return encryptedContainer{}, err
@@ -337,7 +337,7 @@ func writeSecureFile(destination string, data []byte, force bool) error {
 	cleaned := filepath.Clean(destination)
 	parent := filepath.Dir(cleaned)
 
-	temporary, err := os.CreateTemp(parent, ".relay-")
+	temporary, err := os.CreateTemp(parent, ".zk-relay-")
 	if err != nil {
 		return err
 	}

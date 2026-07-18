@@ -46,7 +46,7 @@ func TestReceiverDecryptsBrowserVector(t *testing.T) {
 	if decoded != vector.Envelope {
 		t.Fatalf("envelope mismatch: %#v", decoded)
 	}
-	if string(plain) != "relay-interoperability" {
+	if string(plain) != "zk-relay-interoperability" {
 		t.Fatalf("unexpected plaintext: %q", plain)
 	}
 }
@@ -62,13 +62,13 @@ func TestReceiverRejectsModifiedCiphertext(t *testing.T) {
 
 func TestParseRelayURLKeepsCapabilitiesOutOfEndpoint(t *testing.T) {
 	vector := loadVector(t)
-	cap, err := parseRelayURL("https://relay.example/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key)
+	cap, err := parseRelayURL("https://zk-relay.example/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer zero(cap.key)
 	defer zero(cap.token)
-	if cap.endpoint != "https://relay.example" || strings.Contains(cap.endpoint, "#") {
+	if cap.endpoint != "https://zk-relay.example" || strings.Contains(cap.endpoint, "#") {
 		t.Fatalf("unsafe endpoint: %q", cap.endpoint)
 	}
 }
@@ -77,9 +77,9 @@ func TestParseRelayURLRequiresHTTPSWithoutAmbiguousURLParts(t *testing.T) {
 	vector := loadVector(t)
 	fragment := "#v1." + vector.Key + "." + vector.Key
 	for _, raw := range []string{
-		"http://relay.example/a/abcdefghijklmnopqrstuv" + fragment,
-		"https://relay.example/a/abcdefghijklmnopqrstuv?tracking=value" + fragment,
-		"https://user@relay.example/a/abcdefghijklmnopqrstuv" + fragment,
+		"http://zk-relay.example/a/abcdefghijklmnopqrstuv" + fragment,
+		"https://zk-relay.example/a/abcdefghijklmnopqrstuv?tracking=value" + fragment,
+		"https://user@zk-relay.example/a/abcdefghijklmnopqrstuv" + fragment,
 	} {
 		if _, err := parseRelayURL(raw); err == nil {
 			t.Fatalf("parseRelayURL(%q) unexpectedly succeeded", raw)
@@ -127,7 +127,7 @@ func TestReceiveChecksExplicitOutputBeforeClaiming(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{
 		"receive",
-		"https://relay.example/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key,
+		"https://zk-relay.example/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key,
 		"--output", "existing",
 	}, &stdout, &stderr)
 	if code != 1 {

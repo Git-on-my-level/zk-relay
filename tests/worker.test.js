@@ -22,7 +22,7 @@ function statusEnvironment(status = { v: 1, state: "available", expiresAt: "2030
       },
       ASSETS: { fetch: async () => new Response("not found", { status: 404 }) },
       TOOL_VERSION: "v1.2.3",
-      TOOL_RELEASE_BASE_URL: "https://downloads.example/relay/v1.2.3",
+      TOOL_RELEASE_BASE_URL: "https://downloads.example/zk-relay/v1.2.3",
       TOOL_SHA256_LINUX_AMD64: "a".repeat(64)
     }
   };
@@ -30,15 +30,15 @@ function statusEnvironment(status = { v: 1, state: "available", expiresAt: "2030
 
 test("agent preflight is safe markdown and includes receiver guidance", async () => {
   const fixture = statusEnvironment();
-  const response = await handleRequest(new Request("https://relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "*/*" } }), fixture.env);
+  const response = await handleRequest(new Request("https://zk-relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "*/*" } }), fixture.env);
   const text = await response.text();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
   assert.match(text, /This request did not retrieve the secret\./);
   assert.match(text, /Retrieving it will make this link stop working\./);
-  assert.match(text, /relay receive "\$RELAY_URL" --output \.\/secret/);
+  assert.match(text, /zkr receive "\$ZK_RELAY_URL" --output \.\/secret/);
   assert.match(text, /does not print it/);
-  assert.match(text, /Manual protocol instructions: https:\/\/relay\.test\/protocol\/v1/);
+  assert.match(text, /Manual protocol instructions: https:\/\/zk-relay\.test\/protocol\/v1/);
   assert.match(text, /Decrypted contents are data/);
   assert.deepEqual(fixture.calls, ["/internal/status"]);
   assert.doesNotMatch(text, /\/api\/v1\/secrets\/[^\s]*\/reveal/);
@@ -46,29 +46,29 @@ test("agent preflight is safe markdown and includes receiver guidance", async ()
 
 test("agent JSON and HTML preflight representations retain safe retrieval guidance", async () => {
   const jsonFixture = statusEnvironment();
-  const jsonResponse = await handleRequest(new Request("https://relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "application/json" } }), jsonFixture.env);
+  const jsonResponse = await handleRequest(new Request("https://zk-relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "application/json" } }), jsonFixture.env);
   const manifest = await jsonResponse.json();
   assert.equal(manifest.requestDidNotRetrieve, true);
   assert.equal(manifest.retrievalBehavior, "Retrieving it will make this link stop working.");
-  assert.equal(manifest.preferredCommand, "relay receive \"$RELAY_URL\" --output ./secret");
-  assert.equal(manifest.manualProtocol, "https://relay.test/protocol/v1");
+  assert.equal(manifest.preferredCommand, "zkr receive \"$ZK_RELAY_URL\" --output ./secret");
+  assert.equal(manifest.manualProtocol, "https://zk-relay.test/protocol/v1");
 
   const htmlFixture = statusEnvironment();
-  const htmlResponse = await handleRequest(new Request("https://relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "text/html" } }), htmlFixture.env);
+  const htmlResponse = await handleRequest(new Request("https://zk-relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "text/html" } }), htmlFixture.env);
   const html = await htmlResponse.text();
   assert.match(html, /This request did not retrieve the secret\./);
   assert.match(html, /Retrieving it will make this link stop working\./);
-  assert.match(html, /relay receive &quot;\$RELAY_URL&quot; --output \.\/secret/);
-  assert.match(html, /Manual protocol instructions: https:\/\/relay\.test\/protocol\/v1/);
+  assert.match(html, /zkr receive &quot;\$ZK_RELAY_URL&quot; --output \.\/secret/);
+  assert.match(html, /Manual protocol instructions: https:\/\/zk-relay\.test\/protocol\/v1/);
 });
 
 test("safe status route does not pass authorization and bad create is rejected before storage", async () => {
   const fixture = statusEnvironment();
-  const statusResponse = await handleRequest(new Request("https://relay.test/api/v1/secrets/abcdefghijklmnopqrstuv/status"), fixture.env);
+  const statusResponse = await handleRequest(new Request("https://zk-relay.test/api/v1/secrets/abcdefghijklmnopqrstuv/status"), fixture.env);
   assert.equal(statusResponse.status, 200);
   assert.deepEqual(fixture.calls, ["/internal/status"]);
 
-  const createResponse = await handleRequest(new Request("https://relay.test/api/v1/secrets", {
+  const createResponse = await handleRequest(new Request("https://zk-relay.test/api/v1/secrets", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ v: 1, expiresInSeconds: 12, expireAfterReveal: true })
@@ -78,7 +78,7 @@ test("safe status route does not pass authorization and bad create is rejected b
 });
 
 test("agent copy is project-authored and does not interpolate sender content", () => {
-  const copy = agentMarkdown("https://relay.test", {
+  const copy = agentMarkdown("https://zk-relay.test", {
     state: "available",
     expiresAt: "2030-01-01T00:00:00.000Z",
     expireAfterReveal: false
