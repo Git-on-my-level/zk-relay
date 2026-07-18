@@ -1,6 +1,6 @@
 # ZK Relay
 
-ZK Relay is a small, self-hosted Cloudflare Worker for sending one encrypted text value or file to a person or a tool-using agent. The sender’s browser encrypts the payload; Cloudflare stores only ciphertext. A share produces a human link and an agent link for the same secret.
+ZK Relay is a small, self-hosted Cloudflare Worker for sending one encrypted text value, one file, or both in one share to a person or a tool-using agent. The sender’s browser encrypts the payload; Cloudflare stores only ciphertext. A share produces a human link and an agent link for the same secret.
 
 ZK Relay has no accounts, analytics, browser SDKs, third-party browser runtime code, external database, or always-on server. It uses one Worker and one SQLite-backed Durable Object per secret.
 
@@ -55,10 +55,10 @@ Set an actual HTTPS release base and all five checksums before making the agent 
 Build and GPG-sign the dependency-free Go receiver:
 
 ```sh
-./scripts/build-tools.sh v1.0.0
+./scripts/build-tools.sh v1.1.0
 ```
 
-This produces untracked artifacts under `dist/tools/v1.0.0/` (`zkr-*`, `checksums.txt`, `SHA256SUMS`, and `SHA256SUMS.asc` when `gpg` is available). Upload those files to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, publish the matching public key (see `public/zk-relay-releases.txt`), then set every `TOOL_SHA256_*` value and `TOOL_GPG_FINGERPRINT` in `wrangler.jsonc`. Binaries are not committed.
+This produces untracked artifacts under `dist/tools/v1.1.0/` (`zkr-*`, `checksums.txt`, `SHA256SUMS`, and `SHA256SUMS.asc` when `gpg` is available). Upload those files to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, publish the matching public key (see `public/zk-relay-releases.txt`), then set every `TOOL_SHA256_*` value and `TOOL_GPG_FINGERPRINT` in `wrangler.jsonc`. Binaries are not committed.
 
 Tagged releases can be built in CI: push a `v*` tag and the Release workflow builds, signs with the `ZK_RELAY_GPG_PRIVATE_KEY` secret, and attaches artifacts to the GitHub Release.
 
@@ -93,7 +93,7 @@ All secret routes return `Cache-Control: no-store, max-age=0`. The Worker sets a
 
 ## Operational limits and behavior
 
-- One UTF-8 text value **or** one file per secret; maximum plaintext payload: 1 MiB.
+- One UTF-8 text value, one file, or both (bundle) per secret; maximum combined plaintext payload: 1 MiB.
 - The encrypted container is capped below the Durable Object SQLite 2 MB row limit.
 - Expired secrets are unavailable even if an alarm is delayed.
 - A successful removing reveal followed by a connection failure can leave the recipient without ciphertext. This is the intentional strict single-reveal tradeoff; ZK Relay has no retry lease or acknowledgement mechanism.

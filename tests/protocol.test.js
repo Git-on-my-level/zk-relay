@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import { decryptContainer, encryptEnvelope, makeEnvelope } from "../public/crypto.js";
+import { decryptContainer, encryptEnvelope, makeBundleEnvelope, makeEnvelope } from "../public/crypto.js";
 import { AAD_TEXT, MAX_PAYLOAD_BYTES, base64UrlToBytes, bytesToBase64Url, decodeCapabilityFragment } from "../public/protocol.js";
 import { claimTransition, validateCreatePayload } from "../src/secret-object.js";
 
@@ -40,6 +40,42 @@ test("modified encrypted fields fail authentication without plaintext", async ()
   await assert.rejects(
     decryptContainer({ v: 1, ciphertext: vector.ciphertext, nonce: badNonce, aad: AAD_TEXT }, base64UrlToBytes(vector.key)),
     /authenticate/
+  );
+});
+
+test("browser encrypts and decrypts a text+file bundle", async () => {
+  const textBytes = new TextEncoder().encode("hello note");
+  const fileBytes = new Uint8Array([1, 2, 3, 4]);
+  const envelope = makeBundleEnvelope([
+    { kind: "text", name: "secret.txt", mediaType: "text/plain; charset=utf-8", bytes: textBytes },
+    { kind: "file", name: "blob.bin", mediaType: "application/octet-stream", bytes: fileBytes }
+  ]);
+  assert.equal(envelope.kind, "bundle");
+  const encrypted = await encryptEnvelope(envelope, base64UrlToBytes(vector.key), base64UrlToBytes(vector.nonce));
+  const decoded = await decryptContainer({
+    v: 1,
+    ciphertext: bytesToBase64Url(encrypted.ciphertext),
+    nonce: bytesToBase64Url(encrypted.nonce),
+    aad: AAD_TEXT
+  }, encrypted.key);
+  assert.equal(decoded.kind, "bundle");
+  assert.equal(decoded.items.length, 2);
+  assert.equal(new TextDecoder().decode(decoded.items[0].bytes), "hello note");
+  assert.deepEqual(Array.from(decoded.items[1].bytes), [1, 2, 3, 4]);
+  for (const item of decoded.items) item.bytes.fill(0);
+  decoded.bytes.fill(0);
+  encrypted.ciphertext.fill(0);
+  encrypted.nonce.fill(0);
+  encrypted.key.fill(0);
+  textBytes.fill(0);
+  fileBytes.fill(0);
+
+  assert.throws(
+    () => makeBundleEnvelope([
+      { kind: "text", name: "a.txt", mediaType: "text/plain", bytes: new Uint8Array(MAX_PAYLOAD_BYTES) },
+      { kind: "file", name: "b.bin", mediaType: "application/octet-stream", bytes: new Uint8Array(1) }
+    ]),
+    /1 MiB/
   );
 });
 

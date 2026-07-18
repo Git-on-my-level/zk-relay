@@ -21,6 +21,8 @@ import (
 
 const (
 	protocolAAD       = "zk-relay/v1;envelope"
+	bundleMediaType   = "application/vnd.zk-relay.bundle+json"
+	maxPayloadBytes   = 1024 * 1024
 	maxContainerBytes = 1_450_000
 )
 
@@ -54,6 +56,17 @@ type envelope struct {
 	Name      string `json:"name"`
 	MediaType string `json:"mediaType"`
 	Data      string `json:"data"`
+}
+
+type bundleItem struct {
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	MediaType string `json:"mediaType"`
+	Data      string `json:"data"`
+}
+
+type bundlePayload struct {
+	Items []bundleItem `json:"items"`
 }
 
 func main() {
@@ -100,7 +113,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	defer zero(cap.key)
 	defer zero(cap.token)
 	if !*plainStdout && *output != "" {
-		if err := validateOutputPath(*output, *force); err != nil {
+		if err := validateOutputAncestor(*output, *force); err != nil {
 			fmt.Fprintln(stderr, "Could not safely prepare the local output file.")
 			return 1
 		}
@@ -134,17 +147,34 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer zero(plain)
-	if decodedEnvelope.Kind != "text" && decodedEnvelope.Kind != "file" {
+	if decodedEnvelope.Kind != "text" && decodedEnvelope.Kind != "file" && decodedEnvelope.Kind != "bundle" {
 		fmt.Fprintln(stderr, "The encrypted envelope is invalid.")
 		return 1
 	}
 
 	if *plainStdout {
+		if decodedEnvelope.Kind == "bundle" {
+			fmt.Fprintln(stderr, "Bundles cannot be written to stdout. Use --output with a directory.")
+			return 2
+		}
 		fmt.Fprintln(stderr, "Warning: plaintext will now be written to stdout and may enter an agent transcript or shell history.")
 		if _, err := stdout.Write(plain); err != nil {
 			fmt.Fprintln(stderr, "Could not write plaintext to stdout.")
 			return 1
 		}
+		return 0
+	}
+
+	if decodedEnvelope.Kind == "bundle" {
+		destination := *output
+		if destination == "" {
+			destination = "bundle"
+		}
+		if err := writeBundle(destination, plain, *force); err != nil {
+			fmt.Fprintln(stderr, "Could not safely write the local output files.")
+			return 1
+		}
+		fmt.Fprintln(stderr, "Saved decrypted bundle items to a local directory.")
 		return 0
 	}
 
@@ -293,16 +323,129 @@ func decryptContainer(container encryptedContainer, key []byte) ([]byte, envelop
 		return nil, envelope{}, errors.New("invalid envelope")
 	}
 	data, err := base64.RawURLEncoding.DecodeString(decoded.Data)
-	if err != nil || len(data) > 1024*1024 {
+	if err != nil {
 		zero(plain)
 		return nil, envelope{}, errors.New("invalid payload")
 	}
 	zero(plain)
-	if decoded.V != 1 || (decoded.Kind != "text" && decoded.Kind != "file") || decoded.Name == "" || decoded.MediaType == "" {
+	if decoded.V != 1 || decoded.Name == "" || decoded.MediaType == "" {
+		zero(data)
+		return nil, envelope{}, errors.New("invalid envelope")
+	}
+	switch decoded.Kind {
+	case "text", "file":
+		if len(data) > maxPayloadBytes {
+			zero(data)
+			return nil, envelope{}, errors.New("invalid payload")
+		}
+	case "bundle":
+		if decoded.MediaType != bundleMediaType || len(data) > maxContainerBytes {
+			zero(data)
+			return nil, envelope{}, errors.New("invalid envelope")
+		}
+		itemBytes, _, err := decodeBundleItems(data)
+		if err != nil {
+			zero(data)
+			return nil, envelope{}, errors.New("invalid envelope")
+		}
+		for _, value := range itemBytes {
+			zero(value)
+		}
+	default:
 		zero(data)
 		return nil, envelope{}, errors.New("invalid envelope")
 	}
 	return data, decoded, nil
+}
+
+func decodeBundleItems(payload []byte) ([][]byte, []bundleItem, error) {
+	var parsed bundlePayload
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&parsed); err != nil {
+		return nil, nil, err
+	}
+	if len(parsed.Items) < 1 || len(parsed.Items) > 2 {
+		return nil, nil, errors.New("invalid bundle")
+	}
+	total := 0
+	decoded := make([][]byte, 0, len(parsed.Items))
+	for _, item := range parsed.Items {
+		if (item.Kind != "text" && item.Kind != "file") || item.Name == "" || item.MediaType == "" {
+			for _, value := range decoded {
+				zero(value)
+			}
+			return nil, nil, errors.New("invalid bundle")
+		}
+		data, err := base64.RawURLEncoding.DecodeString(item.Data)
+		if err != nil {
+			for _, value := range decoded {
+				zero(value)
+			}
+			return nil, nil, err
+		}
+		total += len(data)
+		if total > maxPayloadBytes {
+			zero(data)
+			for _, value := range decoded {
+				zero(value)
+			}
+			return nil, nil, errors.New("invalid payload")
+		}
+		decoded = append(decoded, data)
+	}
+	return decoded, parsed.Items, nil
+}
+
+func writeBundle(destination string, payload []byte, force bool) error {
+	itemBytes, items, err := decodeBundleItems(payload)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		for _, value := range itemBytes {
+			zero(value)
+		}
+	}()
+	if err := prepareOutputDir(destination); err != nil {
+		return err
+	}
+	used := map[string]bool{}
+	for index, item := range items {
+		name := sanitizeFilename(item.Name)
+		if used[name] {
+			return errors.New("duplicate output name")
+		}
+		used[name] = true
+		path := filepath.Join(destination, name)
+		if err := writeSecureFile(path, itemBytes[index], force); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func prepareOutputDir(destination string) error {
+	if filepath.IsAbs(destination) {
+		return errors.New("absolute output paths are refused")
+	}
+	cleaned := filepath.Clean(destination)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return errors.New("unsafe output path")
+	}
+	if info, err := os.Lstat(cleaned); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return errors.New("output is not a directory")
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	parent := filepath.Dir(cleaned)
+	if err := requireExistingRegularParent(parent); err != nil {
+		return err
+	}
+	return os.Mkdir(cleaned, 0o700)
 }
 
 func sanitizeFilename(name string) string {
@@ -365,6 +508,30 @@ func writeSecureFile(destination string, data []byte, force bool) error {
 		return err
 	}
 	return os.Remove(temporaryName)
+}
+
+func validateOutputAncestor(destination string, force bool) error {
+	if filepath.IsAbs(destination) {
+		return errors.New("absolute output paths are refused")
+	}
+	cleaned := filepath.Clean(destination)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return errors.New("unsafe output path")
+	}
+	if info, err := os.Lstat(cleaned); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("unsafe output path")
+		}
+		if info.Mode().IsRegular() && !force {
+			return errors.New("output exists")
+		}
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			return errors.New("unsafe output path")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return requireExistingRegularParent(filepath.Dir(cleaned))
 }
 
 func validateOutputPath(destination string, force bool) error {

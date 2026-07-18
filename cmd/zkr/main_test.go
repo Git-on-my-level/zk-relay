@@ -138,6 +138,37 @@ func TestReceiveChecksExplicitOutputBeforeClaiming(t *testing.T) {
 	}
 }
 
+func TestWriteBundleSavesItemsIntoDirectory(t *testing.T) {
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := t.TempDir()
+	if err := os.Chdir(temporary); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(original) })
+
+	payload, err := json.Marshal(bundlePayload{Items: []bundleItem{
+		{Kind: "text", Name: "secret.txt", MediaType: "text/plain; charset=utf-8", Data: base64.RawURLEncoding.EncodeToString([]byte("note"))},
+		{Kind: "file", Name: "blob.bin", MediaType: "application/octet-stream", Data: base64.RawURLEncoding.EncodeToString([]byte{1, 2, 3})},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeBundle("out", payload, false); err != nil {
+		t.Fatal(err)
+	}
+	text, err := os.ReadFile(filepath.Join("out", "secret.txt"))
+	if err != nil || string(text) != "note" {
+		t.Fatalf("text item = %q err=%v", text, err)
+	}
+	file, err := os.ReadFile(filepath.Join("out", "blob.bin"))
+	if err != nil || !bytes.Equal(file, []byte{1, 2, 3}) {
+		t.Fatalf("file item = %v err=%v", file, err)
+	}
+}
+
 func TestFilenameSanitization(t *testing.T) {
 	for input, want := range map[string]string{
 		"../../.secret": "secret",

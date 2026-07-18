@@ -1,5 +1,5 @@
 import { MAX_PAYLOAD_BYTES, base64UrlToBytes, bytesToBase64Url, decodeCapabilityFragment, formatDuration, randomBytes } from "./protocol.js";
-import { decryptContainer, encryptEnvelope, hashAccessToken, makeEnvelope, safeDownloadName } from "./crypto.js";
+import { decodeBundleItems, decryptContainer, encryptEnvelope, hashAccessToken, makeBundleEnvelope, makeEnvelope, safeDownloadName } from "./crypto.js";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
@@ -102,11 +102,6 @@ function replaceMaskedSelection(inserted, mode = "insert") {
     next = secretText.slice(0, start) + inserted + secretText.slice(end);
     caret = start + inserted.length;
   }
-  if (selectedFile) {
-    selectedFile = null;
-    elements.fileInput.value = "";
-    elements.fileStatus.textContent = "";
-  }
   setSecretInput(next, caret);
 }
 
@@ -138,11 +133,6 @@ function onSecretInput() {
     if (!maskedComposition) setSecretInput(secretText, elements.secretInput.selectionStart ?? secretText.length);
     return;
   }
-  if (selectedFile) {
-    selectedFile = null;
-    elements.fileInput.value = "";
-    elements.fileStatus.textContent = "";
-  }
   setSecretInput(elements.secretInput.value);
 }
 
@@ -158,11 +148,6 @@ function onSecretCompositionEnd(event) {
   const { start, end } = maskedComposition;
   maskedComposition = null;
   const composedText = event.data || "";
-  if (selectedFile) {
-    selectedFile = null;
-    elements.fileInput.value = "";
-    elements.fileStatus.textContent = "";
-  }
   const next = secretText.slice(0, start) + composedText + secretText.slice(end);
   setSecretInput(next, start + composedText.length);
 }
@@ -190,20 +175,16 @@ async function attachFile() {
 async function chooseFile() {
   const file = elements.fileInput.files?.[0];
   if (!file) return;
-  if (file.size > MAX_PAYLOAD_BYTES) {
-    elements.creationError.textContent = "Files must be 1 MiB or smaller.";
+  const textBytes = textEncoder.encode(secretText).length;
+  if (file.size + textBytes > MAX_PAYLOAD_BYTES) {
+    elements.creationError.textContent = "Text and file together must be 1 MiB or smaller.";
     elements.fileInput.value = "";
     return;
   }
-  if (secretText.length > 0 && !window.confirm("Replace the text with this file?")) {
-    elements.fileInput.value = "";
-    return;
-  }
-  secretText = "";
   selectedFile = file;
   elements.creationError.textContent = "";
   elements.fileStatus.textContent = file.name;
-  setSecretInput("");
+  updateCreateButton();
 }
 
 async function createLinks(event) {
@@ -213,20 +194,32 @@ async function createLinks(event) {
   elements.createLinks.disabled = true;
   elements.createLinks.querySelector("span").textContent = "Creating secure links";
 
-  let payloadBytes;
+  const wipe = [];
   let envelope;
   let key;
   let token;
   try {
-    if (selectedFile) {
-      payloadBytes = new Uint8Array(await selectedFile.arrayBuffer());
-      envelope = makeEnvelope("file", selectedFile.name, selectedFile.type || "application/octet-stream", payloadBytes);
+    if (selectedFile && secretText.length) {
+      const textBytes = textEncoder.encode(secretText);
+      const fileBytes = new Uint8Array(await selectedFile.arrayBuffer());
+      wipe.push(textBytes, fileBytes);
+      if (textBytes.length + fileBytes.length > MAX_PAYLOAD_BYTES) throw new Error("Payloads must be 1 MiB or smaller.");
+      envelope = makeBundleEnvelope([
+        { kind: "text", name: "secret.txt", mediaType: "text/plain; charset=utf-8", bytes: textBytes },
+        { kind: "file", name: selectedFile.name, mediaType: selectedFile.type || "application/octet-stream", bytes: fileBytes }
+      ]);
+    } else if (selectedFile) {
+      const fileBytes = new Uint8Array(await selectedFile.arrayBuffer());
+      wipe.push(fileBytes);
+      if (fileBytes.length > MAX_PAYLOAD_BYTES) throw new Error("Payloads must be 1 MiB or smaller.");
+      envelope = makeEnvelope("file", selectedFile.name, selectedFile.type || "application/octet-stream", fileBytes);
     } else {
-      payloadBytes = textEncoder.encode(secretText);
-      envelope = makeEnvelope("text", "secret.txt", "text/plain; charset=utf-8", payloadBytes);
+      const textBytes = textEncoder.encode(secretText);
+      wipe.push(textBytes);
+      if (textBytes.length > MAX_PAYLOAD_BYTES) throw new Error("Payloads must be 1 MiB or smaller.");
+      envelope = makeEnvelope("text", "secret.txt", "text/plain; charset=utf-8", textBytes);
     }
-    if (payloadBytes.length > MAX_PAYLOAD_BYTES) throw new Error("Payloads must be 1 MiB or smaller.");
-    payloadBytes.fill(0);
+    for (const bytes of wipe) bytes.fill(0);
     const encrypted = await encryptEnvelope(envelope);
     key = encrypted.key;
     token = randomBytes(32);
@@ -255,6 +248,11 @@ async function createLinks(event) {
     elements.agentLink.value = `${origin}/a/${created.id}#v1.${keyText}.${tokenText}`;
     elements.humanLink.type = "password";
     elements.agentLink.type = "password";
+    document.querySelectorAll(".link-visibility use").forEach((use) => use.setAttribute("href", "/icons.svg#eye"));
+    document.querySelectorAll(".link-visibility").forEach((button) => {
+      const label = el(button.dataset.target).getAttribute("aria-label");
+      button.setAttribute("aria-label", `Show ${label}`);
+    });
     elements.expiryStatus.textContent = `Expires in ${formatDuration(selectedDuration)}`;
     elements.creationView.hidden = true;
     elements.shareView.hidden = false;
@@ -279,11 +277,30 @@ function toggleLinkVisibility(button) {
   input.type = showing ? "password" : "text";
   const label = input.getAttribute("aria-label");
   button.setAttribute("aria-label", `${showing ? "Show" : "Hide"} ${label}`);
+  const use = button.querySelector("use");
+  if (use) use.setAttribute("href", showing ? "/icons.svg#eye" : "/icons.svg#eye-off");
 }
 
-async function copyValue(value, input, revealForFallback = null) {
+function flashCopied(button) {
+  if (!button) return;
+  const use = button.querySelector("use");
+  if (!use) return;
+  if (!button.dataset.copyLabel) button.dataset.copyLabel = button.getAttribute("aria-label") || "Copy";
+  clearTimeout(button._copiedTimer);
+  use.setAttribute("href", "/icons.svg#check");
+  button.classList.add("is-copied");
+  button.setAttribute("aria-label", "Copied");
+  button._copiedTimer = setTimeout(() => {
+    use.setAttribute("href", "/icons.svg#copy");
+    button.classList.remove("is-copied");
+    button.setAttribute("aria-label", button.dataset.copyLabel);
+  }, 1500);
+}
+
+async function copyValue(value, input, button = null, revealForFallback = null) {
   try {
     await navigator.clipboard.writeText(value);
+    flashCopied(button);
     showToast("Copied");
   } catch {
     if (revealForFallback) revealForFallback();
@@ -359,6 +376,15 @@ async function loadHumanStatus(id) {
   }
 }
 
+function offerDownload(name, mediaType, bytes) {
+  clearDownload();
+  downloadUrl = URL.createObjectURL(new Blob([bytes], { type: mediaType }));
+  elements.fileDownload.href = downloadUrl;
+  elements.fileDownload.download = safeDownloadName(name);
+  elements.fileDownload.textContent = "Download file";
+  elements.fileDownload.hidden = false;
+}
+
 async function revealHumanSecret(id) {
   if (!capability) return;
   elements.revealSecret.disabled = true;
@@ -372,20 +398,31 @@ async function revealHumanSecret(id) {
     });
     if (!result.ok) throw new Error("The secret is no longer available.");
     const envelope = await decryptContainer(await result.json(), capability.key);
+    clearDownload();
     if (envelope.kind === "text") {
       resultIsVisible = false;
       elements.humanResult.hidden = false;
       unsealResult();
       setResultText(textDecoder.decode(envelope.bytes));
-      clearDownload();
-    } else {
-      clearDownload();
-      downloadUrl = URL.createObjectURL(new Blob([envelope.bytes], { type: envelope.mediaType }));
-      elements.fileDownload.href = downloadUrl;
-      elements.fileDownload.download = safeDownloadName(envelope.name);
-      elements.fileDownload.textContent = "Download file";
-      elements.fileDownload.hidden = false;
+    } else if (envelope.kind === "file") {
+      offerDownload(envelope.name, envelope.mediaType, envelope.bytes);
       elements.humanResult.hidden = true;
+      sealResult();
+    } else {
+      const items = envelope.items || decodeBundleItems(envelope);
+      const textItem = items.find((item) => item.kind === "text");
+      const fileItem = items.find((item) => item.kind === "file");
+      if (textItem) {
+        resultIsVisible = false;
+        elements.humanResult.hidden = false;
+        unsealResult();
+        setResultText(textDecoder.decode(textItem.bytes));
+      } else {
+        elements.humanResult.hidden = true;
+        sealResult();
+      }
+      if (fileItem) offerDownload(fileItem.name, fileItem.mediaType, fileItem.bytes);
+      for (const item of items) item.bytes.fill(0);
     }
     envelope.bytes.fill(0);
     if (humanExpireAfterReveal) {
@@ -443,7 +480,7 @@ function bindResultActions() {
   });
   elements.resultCopy.addEventListener("click", () => {
     if (!revealedText) return;
-    copyValue(revealedText, elements.revealedText, () => {
+    copyValue(revealedText, elements.revealedText, elements.resultCopy, () => {
       resultIsVisible = true;
       setResultText(revealedText);
     });
@@ -479,7 +516,7 @@ function initialize() {
   document.querySelectorAll(".link-visibility").forEach((button) => button.addEventListener("click", () => toggleLinkVisibility(button)));
   document.querySelectorAll(".copy-link").forEach((button) => button.addEventListener("click", () => {
     const input = el(button.dataset.target);
-    copyValue(input.value, input);
+    copyValue(input.value, input, button);
   }));
 }
 

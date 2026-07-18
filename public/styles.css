@@ -73,6 +73,7 @@ textarea { width: 100%; resize: vertical; color: var(--ink); border: 1px solid #
 .link-field input { min-width: 0; width: 100%; height: 4.25rem; padding: 0 9.25rem 0 1.45rem; border: 0; background: transparent; color: var(--ink); font-family: var(--font-mono); font-size: 1.02rem; letter-spacing: .01em; outline: 0; }
 .link-actions { position: absolute; right: .55rem; display: flex; gap: .1rem; }
 .icon-button { display: inline-grid; width: 44px; height: 44px; place-items: center; padding: 0; border: 0; color: var(--ink); background: transparent; }
+.icon-button.is-copied { color: var(--green); }
 .icon-button svg { width: 1.65rem; height: 1.65rem; }
 .share-status { display: flex; flex-wrap: wrap; gap: 1.4rem 2rem; padding-top: .25rem; border-top: 1px solid var(--line); }
 .share-status p { margin-top: 2rem; color: var(--ink); }

@@ -59,7 +59,7 @@ test("agent JSON and HTML preflight representations retain safe retrieval guidan
   assert.equal(manifest.receiverContract.authorization.scheme, "zk-relay");
   assert.equal(manifest.receiverContract.crypto.aad, "zk-relay/v1;envelope");
   assert.equal(manifest.receiverContract.file_safety.max_payload_bytes, 1048576);
-  assert.deepEqual(manifest.receiverContract.envelope.kinds, ["text", "file"]);
+  assert.deepEqual(manifest.receiverContract.envelope.kinds, ["text", "file", "bundle"]);
   assert.equal(manifest.receiverContract.receiver_contract, "https://zk-relay.test/protocol/v1");
 
   const htmlFixture = statusEnvironment();
