@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"os"
@@ -69,6 +70,71 @@ func TestParseRelayURLKeepsCapabilitiesOutOfEndpoint(t *testing.T) {
 	defer zero(cap.token)
 	if cap.endpoint != "https://relay.example" || strings.Contains(cap.endpoint, "#") {
 		t.Fatalf("unsafe endpoint: %q", cap.endpoint)
+	}
+}
+
+func TestParseRelayURLRequiresHTTPSWithoutAmbiguousURLParts(t *testing.T) {
+	vector := loadVector(t)
+	fragment := "#v1." + vector.Key + "." + vector.Key
+	for _, raw := range []string{
+		"http://relay.example/a/abcdefghijklmnopqrstuv" + fragment,
+		"https://relay.example/a/abcdefghijklmnopqrstuv?tracking=value" + fragment,
+		"https://user@relay.example/a/abcdefghijklmnopqrstuv" + fragment,
+	} {
+		if _, err := parseRelayURL(raw); err == nil {
+			t.Fatalf("parseRelayURL(%q) unexpectedly succeeded", raw)
+		}
+	}
+}
+
+func TestDecodeJSONAcceptsMaximumEncryptedContainerResponse(t *testing.T) {
+	encodedCiphertext := strings.Repeat("A", base64.RawURLEncoding.EncodedLen(maxContainerBytes))
+	document, err := json.Marshal(encryptedContainer{
+		V:          1,
+		Ciphertext: encodedCiphertext,
+		Nonce:      "EBESExQVFhcYGRob",
+		AAD:        protocolAAD,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document) > maxResponseBytes {
+		t.Fatalf("maximum response is %d bytes, limit is %d", len(document), maxResponseBytes)
+	}
+	var decoded encryptedContainer
+	if err := decodeJSON(strings.NewReader(string(document)), &decoded); err != nil {
+		t.Fatalf("decodeJSON rejected a maximum-size response: %v", err)
+	}
+	if decoded.Ciphertext != encodedCiphertext {
+		t.Fatal("ciphertext changed while decoding")
+	}
+}
+
+func TestReceiveChecksExplicitOutputBeforeClaiming(t *testing.T) {
+	vector := loadVector(t)
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := t.TempDir()
+	if err := os.Chdir(temporary); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(original) })
+	if err := os.WriteFile("existing", []byte("already here"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"receive",
+		"https://relay.example/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key,
+		"--output", "existing",
+	}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("run exit = %d, want 1; stderr: %s", code, stderr.String())
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "Could not safely prepare the local output file.") {
+		t.Fatalf("output safety validation did not stop before claim: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 

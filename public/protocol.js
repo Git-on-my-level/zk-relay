@@ -1,6 +1,9 @@
 export const PROTOCOL_VERSION = 1;
 export const AAD_TEXT = "relay/v1;envelope";
 export const MAX_PAYLOAD_BYTES = 1024 * 1024;
+// The encrypted envelope is kept below the Durable Object per-value limit.
+// A 1 MiB payload plus its JSON/base64 envelope fits comfortably within this.
+export const MAX_ENCRYPTED_CONTAINER_BYTES = 1_450_000;
 export const ALLOWED_EXPIRIES = new Set([3600, 86400, 604800]);
 
 export function bytesToBase64Url(bytes) {
@@ -13,7 +16,9 @@ export function bytesToBase64Url(bytes) {
 }
 
 export function base64UrlToBytes(value) {
-  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) {
+  // Empty payload data is valid for a zero-byte attached file. Callers that
+  // require non-empty capabilities or ciphertext enforce their own lengths.
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]*$/.test(value)) {
     throw new Error("Invalid base64url value");
   }
   const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (value.length % 4)) % 4);

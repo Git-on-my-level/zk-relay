@@ -1,12 +1,12 @@
 import {
   ALLOWED_EXPIRIES,
   AAD_TEXT,
+  MAX_ENCRYPTED_CONTAINER_BYTES,
   PROTOCOL_VERSION,
   base64UrlToBytes,
   bytesToBase64Url
 } from "../public/protocol.js";
 
-const MAX_ENCRYPTED_CONTAINER_BYTES = 1_500_000;
 const INVALID_ATTEMPT_LIMIT = 12;
 const INVALID_ATTEMPT_WINDOW_MS = 60_000;
 

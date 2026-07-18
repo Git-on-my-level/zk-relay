@@ -41,6 +41,7 @@ let revealedText = "";
 let resultIsVisible = false;
 let downloadUrl = null;
 let toastTimer = null;
+let maskedComposition = null;
 
 function setAccentColor() {
   const color = document.body.dataset.accentColor;
@@ -127,13 +128,39 @@ function onSecretBeforeInput(event) {
 }
 
 function onSecretInput() {
-  if (!secretIsVisible) return;
+  if (!secretIsVisible) {
+    // Native composition events may mutate the textarea after compositionend.
+    // Restore the mirror once the completed value has been kept in memory.
+    if (!maskedComposition) setSecretInput(secretText, elements.secretInput.selectionStart ?? secretText.length);
+    return;
+  }
   if (selectedFile) {
     selectedFile = null;
     elements.fileInput.value = "";
     elements.fileStatus.textContent = "";
   }
   setSecretInput(elements.secretInput.value);
+}
+
+function onSecretCompositionStart() {
+  if (secretIsVisible) return;
+  const input = elements.secretInput;
+  const start = input.selectionStart ?? 0;
+  maskedComposition = { start, end: input.selectionEnd ?? start };
+}
+
+function onSecretCompositionEnd(event) {
+  if (secretIsVisible || !maskedComposition) return;
+  const { start, end } = maskedComposition;
+  maskedComposition = null;
+  const composedText = event.data || "";
+  if (selectedFile) {
+    selectedFile = null;
+    elements.fileInput.value = "";
+    elements.fileStatus.textContent = "";
+  }
+  const next = secretText.slice(0, start) + composedText + secretText.slice(end);
+  setSecretInput(next, start + composedText.length);
 }
 
 function activateCreationView() {
@@ -250,15 +277,16 @@ function toggleLinkVisibility(button) {
   button.setAttribute("aria-label", `${showing ? "Show" : "Hide"} ${label}`);
 }
 
-async function copyValue(value, input) {
+async function copyValue(value, input, revealForFallback = null) {
   try {
     await navigator.clipboard.writeText(value);
     showToast("Copied");
   } catch {
-    input.type = "text";
+    if (revealForFallback) revealForFallback();
+    else input.type = "text";
     input.focus();
     input.select();
-    showToast("Copy the selected link.");
+    showToast("Copy the selected value.");
   }
 }
 
@@ -346,6 +374,7 @@ function setupHumanRoute() {
 function clearSensitiveState() {
   secretText = "";
   revealedText = "";
+  maskedComposition = null;
   selectedFile = null;
   elements.secretInput.value = "";
   elements.humanLink.value = "";
@@ -365,6 +394,8 @@ function initialize() {
   activateCreationView();
   elements.secretInput.addEventListener("beforeinput", onSecretBeforeInput);
   elements.secretInput.addEventListener("input", onSecretInput);
+  elements.secretInput.addEventListener("compositionstart", onSecretCompositionStart);
+  elements.secretInput.addEventListener("compositionend", onSecretCompositionEnd);
   elements.secretInput.addEventListener("paste", (event) => {
     if (!secretIsVisible) {
       event.preventDefault();
@@ -388,7 +419,10 @@ function initialize() {
     resultIsVisible = !resultIsVisible;
     setResultText(revealedText);
   });
-  elements.resultCopy.addEventListener("click", () => copyValue(revealedText, elements.revealedText));
+  elements.resultCopy.addEventListener("click", () => copyValue(revealedText, elements.revealedText, () => {
+    resultIsVisible = true;
+    setResultText(revealedText);
+  }));
   window.addEventListener("pagehide", clearSensitiveState, { once: true });
 }
 

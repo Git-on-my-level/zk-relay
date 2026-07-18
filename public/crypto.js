@@ -1,5 +1,7 @@
 import {
   AAD_TEXT,
+  MAX_ENCRYPTED_CONTAINER_BYTES,
+  MAX_PAYLOAD_BYTES,
   PROTOCOL_VERSION,
   base64UrlToBytes,
   bytesToBase64Url,
@@ -7,7 +9,7 @@ import {
 } from "./protocol.js";
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+const decoder = new TextDecoder("utf-8", { fatal: true });
 
 export function makeEnvelope(kind, name, mediaType, payloadBytes) {
   return {
@@ -45,7 +47,10 @@ export async function decryptContainer(container, keyBytes) {
   }
   const ciphertext = base64UrlToBytes(container.ciphertext);
   const nonce = base64UrlToBytes(container.nonce);
-  if (nonce.length !== 12) throw new Error("Invalid nonce");
+  if (ciphertext.length === 0 || ciphertext.length > MAX_ENCRYPTED_CONTAINER_BYTES || nonce.length !== 12) {
+    ciphertext.fill(0);
+    throw new Error("Invalid encrypted container");
+  }
   const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["decrypt"]);
   let plaintext;
   try {
@@ -56,13 +61,32 @@ export async function decryptContainer(container, keyBytes) {
     ));
   } catch {
     throw new Error("Could not authenticate encrypted content");
+  } finally {
+    ciphertext.fill(0);
   }
+  let payloadBytes = null;
   try {
     const envelope = JSON.parse(decoder.decode(plaintext));
-    if (envelope.v !== PROTOCOL_VERSION || !["text", "file"].includes(envelope.kind) || typeof envelope.name !== "string" || typeof envelope.mediaType !== "string" || typeof envelope.data !== "string") {
+    const keys = Object.keys(envelope).sort();
+    if (
+      keys.join(",") !== "data,kind,mediaType,name,v" ||
+      envelope.v !== PROTOCOL_VERSION ||
+      !["text", "file"].includes(envelope.kind) ||
+      typeof envelope.name !== "string" ||
+      envelope.name.length === 0 ||
+      typeof envelope.mediaType !== "string" ||
+      envelope.mediaType.length === 0 ||
+      typeof envelope.data !== "string"
+    ) {
       throw new Error("Invalid encrypted envelope");
     }
-    return { ...envelope, bytes: base64UrlToBytes(envelope.data) };
+    payloadBytes = base64UrlToBytes(envelope.data);
+    if (payloadBytes.length > MAX_PAYLOAD_BYTES) throw new Error("Encrypted payload exceeds the 1 MiB limit");
+    return { ...envelope, bytes: payloadBytes };
+  } catch (error) {
+    if (payloadBytes) payloadBytes.fill(0);
+    if (error instanceof Error && error.message.startsWith("Encrypted payload")) throw error;
+    throw new Error("Invalid encrypted envelope");
   } finally {
     plaintext.fill(0);
   }

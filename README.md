@@ -15,6 +15,8 @@ Relay has no accounts, analytics, browser SDKs, third-party browser runtime code
 
   The receiver decrypts locally and writes an owner-only local file. It never prints plaintext by default. Plaintext stdout is deliberately gated behind `--stdout --allow-plaintext-stdout` and a transcript-risk warning.
 
+  The official receiver accepts only complete `https://` agent links. When an explicit `--output` target is unsafe or already exists without `--force`, it rejects that target before claiming a potentially one-time secret.
+
 By default, the first successful reveal removes the encrypted payload. Enable **Do not expire after revealing** to allow repeated retrieval until the chosen time limit. The available limits are 1 hour, 1 day, and 7 days.
 
 ## Quick start

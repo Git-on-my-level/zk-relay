@@ -21,8 +21,10 @@ import (
 
 const (
 	protocolAAD       = "relay/v1;envelope"
-	maxContainerBytes = 1_500_000
+	maxContainerBytes = 1_450_000
 )
+
+var maxResponseBytes = base64.RawURLEncoding.EncodedLen(maxContainerBytes) + 1024
 
 type capability struct {
 	endpoint  string
@@ -81,6 +83,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Refusing plaintext stdout. Repeat with --stdout --allow-plaintext-stdout after considering transcript risk.")
 		return 2
 	}
+	if *plainStdout && *output != "" {
+		fmt.Fprintln(stderr, "--stdout and --output cannot be used together.")
+		return 2
+	}
 	if !*plainStdout && flags.NArg() != 0 {
 		fmt.Fprintln(stderr, "Unexpected arguments after receive options.")
 		return 2
@@ -93,6 +99,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer zero(cap.key)
 	defer zero(cap.token)
+	if !*plainStdout && *output != "" {
+		if err := validateOutputPath(*output, *force); err != nil {
+			fmt.Fprintln(stderr, "Could not safely prepare the local output file.")
+			return 1
+		}
+	}
 
 	client := &http.Client{
 		Timeout: 20 * time.Second,
@@ -150,7 +162,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func parseRelayURL(raw string) (capability, error) {
 	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" {
 		return capability{}, errors.New("invalid URL")
 	}
 	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
@@ -229,10 +241,23 @@ func claim(client *http.Client, cap capability) (encryptedContainer, error) {
 }
 
 func decodeJSON(reader io.Reader, destination any) error {
-	limited := io.LimitReader(reader, maxContainerBytes+1024)
+	limited := &io.LimitedReader{R: reader, N: int64(maxResponseBytes) + 1}
 	decoder := json.NewDecoder(limited)
 	decoder.DisallowUnknownFields()
-	return decoder.Decode(destination)
+	if err := decoder.Decode(destination); err != nil {
+		return err
+	}
+	if limited.N == 0 {
+		return errors.New("response too large")
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("multiple JSON values")
+		}
+		return err
+	}
+	return nil
 }
 
 func decryptContainer(container encryptedContainer, key []byte) ([]byte, envelope, error) {
@@ -306,27 +331,11 @@ func sanitizeFilename(name string) string {
 }
 
 func writeSecureFile(destination string, data []byte, force bool) error {
-	if filepath.IsAbs(destination) {
-		return errors.New("absolute output paths are refused")
+	if err := validateOutputPath(destination, force); err != nil {
+		return err
 	}
 	cleaned := filepath.Clean(destination)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
-		return errors.New("unsafe output path")
-	}
 	parent := filepath.Dir(cleaned)
-	if err := requireExistingRegularParent(parent); err != nil {
-		return err
-	}
-	if info, err := os.Lstat(cleaned); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return errors.New("output is not a regular file")
-		}
-		if !force {
-			return errors.New("output exists")
-		}
-	} else if !os.IsNotExist(err) {
-		return err
-	}
 
 	temporary, err := os.CreateTemp(parent, ".relay-")
 	if err != nil {
@@ -356,6 +365,31 @@ func writeSecureFile(destination string, data []byte, force bool) error {
 		return err
 	}
 	return os.Remove(temporaryName)
+}
+
+func validateOutputPath(destination string, force bool) error {
+	if filepath.IsAbs(destination) {
+		return errors.New("absolute output paths are refused")
+	}
+	cleaned := filepath.Clean(destination)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return errors.New("unsafe output path")
+	}
+	parent := filepath.Dir(cleaned)
+	if err := requireExistingRegularParent(parent); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(cleaned); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return errors.New("output is not a regular file")
+		}
+		if !force {
+			return errors.New("output exists")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 func requireExistingRegularParent(parent string) error {

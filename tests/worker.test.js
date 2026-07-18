@@ -44,6 +44,24 @@ test("agent preflight is safe markdown and includes receiver guidance", async ()
   assert.doesNotMatch(text, /\/api\/v1\/secrets\/[^\s]*\/reveal/);
 });
 
+test("agent JSON and HTML preflight representations retain safe retrieval guidance", async () => {
+  const jsonFixture = statusEnvironment();
+  const jsonResponse = await handleRequest(new Request("https://relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "application/json" } }), jsonFixture.env);
+  const manifest = await jsonResponse.json();
+  assert.equal(manifest.requestDidNotRetrieve, true);
+  assert.equal(manifest.retrievalBehavior, "Retrieving it will make this link stop working.");
+  assert.equal(manifest.preferredCommand, "relay receive \"$RELAY_URL\" --output ./secret");
+  assert.equal(manifest.manualProtocol, "https://relay.test/protocol/v1");
+
+  const htmlFixture = statusEnvironment();
+  const htmlResponse = await handleRequest(new Request("https://relay.test/a/abcdefghijklmnopqrstuv", { headers: { accept: "text/html" } }), htmlFixture.env);
+  const html = await htmlResponse.text();
+  assert.match(html, /This request did not retrieve the secret\./);
+  assert.match(html, /Retrieving it will make this link stop working\./);
+  assert.match(html, /relay receive &quot;\$RELAY_URL&quot; --output \.\/secret/);
+  assert.match(html, /Manual protocol instructions: https:\/\/relay\.test\/protocol\/v1/);
+});
+
 test("safe status route does not pass authorization and bad create is rejected before storage", async () => {
   const fixture = statusEnvironment();
   const statusResponse = await handleRequest(new Request("https://relay.test/api/v1/secrets/abcdefghijklmnopqrstuv/status"), fixture.env);
@@ -88,4 +106,6 @@ test("static UI preserves locked labels and never renders secrets with innerHTML
   assert.match(html, /id="human-link" type="password" readonly/);
   assert.match(html, /id="agent-link" type="password" readonly/);
   assert.doesNotMatch(app, /innerHTML/);
+  assert.match(app, /compositionstart/);
+  assert.match(app, /compositionend/);
 });
