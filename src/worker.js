@@ -137,12 +137,17 @@ function receiverContract(origin) {
       fields: ["v", "kind", "name", "mediaType", "data"],
       kinds: ["text", "file", "bundle"],
       data_encoding: "base64url",
-      route_after_decrypt: true
+      route_after_decrypt: true,
+      bundle_items: {
+        fields: ["kind", "name", "mediaType", "data"],
+        kinds: ["text", "file"],
+        note: "Nested items omit v. Protocol version is only on the outer envelope."
+      }
     },
     kind_behavior: {
       text: "Decode UTF-8 strictly. Display or copy only on explicit request. Optionally save as the sanitized name.",
       file: "Save raw bytes to a sanitized filename under a caller-selected directory. Never execute or auto-open. Report path, mediaType, byte count, and SHA-256.",
-      bundle: "Decode data as JSON {items:[...]} with 1-2 text/file items. Handle each item by its kind. Preferred receiver writes into --output as a directory."
+      bundle: "Decode data as JSON {items:[...]} with 1-2 items. Each item is {kind,name,mediaType,data} only (no v). Handle each by kind. Preferred receiver writes into --output as a directory."
     },
     file_safety: {
       max_payload_bytes: 1048576,

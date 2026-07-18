@@ -248,7 +248,7 @@ async function createLinks(event) {
     elements.agentLink.value = `${origin}/a/${created.id}#v1.${keyText}.${tokenText}`;
     elements.humanLink.type = "password";
     elements.agentLink.type = "password";
-    document.querySelectorAll(".link-visibility use").forEach((use) => use.setAttribute("href", "/icons.svg#eye"));
+    document.querySelectorAll(".link-visibility use").forEach((use) => use.setAttribute("href", "/icons.svg#eye-off"));
     document.querySelectorAll(".link-visibility").forEach((button) => {
       const label = el(button.dataset.target).getAttribute("aria-label");
       button.setAttribute("aria-label", `Show ${label}`);
@@ -278,7 +278,7 @@ function toggleLinkVisibility(button) {
   const label = input.getAttribute("aria-label");
   button.setAttribute("aria-label", `${showing ? "Show" : "Hide"} ${label}`);
   const use = button.querySelector("use");
-  if (use) use.setAttribute("href", showing ? "/icons.svg#eye" : "/icons.svg#eye-off");
+  if (use) use.setAttribute("href", showing ? "/icons.svg#eye-off" : "/icons.svg#eye");
 }
 
 function flashCopied(button) {
@@ -348,6 +348,9 @@ function clearDownload() {
   downloadUrl = null;
   elements.fileDownload.hidden = true;
   elements.fileDownload.removeAttribute("href");
+  elements.fileDownload.removeAttribute("download");
+  elements.fileDownload.classList.remove("primary-action");
+  elements.fileDownload.textContent = "Download file";
 }
 
 function wipeCapability() {
@@ -378,10 +381,12 @@ async function loadHumanStatus(id) {
 
 function offerDownload(name, mediaType, bytes) {
   clearDownload();
+  const filename = safeDownloadName(name);
   downloadUrl = URL.createObjectURL(new Blob([bytes], { type: mediaType }));
   elements.fileDownload.href = downloadUrl;
-  elements.fileDownload.download = safeDownloadName(name);
-  elements.fileDownload.textContent = "Download file";
+  elements.fileDownload.download = filename;
+  elements.fileDownload.textContent = `Download ${filename}`;
+  elements.fileDownload.classList.add("primary-action");
   elements.fileDownload.hidden = false;
 }
 
@@ -425,13 +430,8 @@ async function revealHumanSecret(id) {
       for (const item of items) item.bytes.fill(0);
     }
     envelope.bytes.fill(0);
-    if (humanExpireAfterReveal) {
-      wipeCapability();
-      elements.revealSecret.hidden = true;
-    } else {
-      elements.revealSecret.disabled = false;
-      elements.revealSecret.textContent = "Reveal again";
-    }
+    elements.revealSecret.hidden = true;
+    if (humanExpireAfterReveal) wipeCapability();
   } catch (error) {
     elements.humanError.textContent = error instanceof Error ? error.message : "The secret could not be revealed.";
     if (capability) {
