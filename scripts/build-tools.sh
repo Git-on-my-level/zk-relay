@@ -28,6 +28,15 @@ build_target windows amd64 zkr-windows-amd64.exe
 (
   cd "$output_dir"
   shasum -a 256 zkr-* > SHA256SUMS
+  cp SHA256SUMS checksums.txt
+  if command -v gpg >/dev/null 2>&1; then
+    signing_key="${ZK_RELAY_GPG_KEY:-zkr@scalingforever.com}"
+    gpg --batch --yes --pinentry-mode loopback --passphrase "${ZK_RELAY_GPG_PASSPHRASE-}" \
+      --local-user "$signing_key" --detach-sign --armor -o SHA256SUMS.asc SHA256SUMS
+    echo "Signed checksums with $signing_key"
+  else
+    echo "gpg not found; skipped SHA256SUMS.asc" >&2
+  fi
 )
 
 echo "Built receiver artifacts in $output_dir"

@@ -10,7 +10,7 @@
   --control: #151817;
   --focus: #247a3b;
   --font-display: Georgia, "Times New Roman", serif;
-  --font-body: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
@@ -26,8 +26,8 @@ svg { display: block; width: 1.5rem; height: 1.5rem; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; clip-path: inset(50%); }
 
 .identity-rail { position: fixed; inset: 0 auto 0 0; width: clamp(240px, 17vw, 280px); padding: 4rem clamp(2.25rem, 3vw, 4rem); border-right: 1px solid var(--line); }
-.brand { display: inline-flex; align-items: center; gap: .8rem; color: var(--ink); font-family: var(--font-display); font-size: 2rem; text-decoration: none; }
-.brand-mark { width: 3.5rem; height: 2.7rem; color: var(--green); }
+.brand { display: inline-flex; align-items: center; gap: .85rem; color: var(--ink); font-family: var(--font-display); font-size: 1.7rem; line-height: 1; text-decoration: none; white-space: nowrap; }
+.brand-mark { width: 2.4rem; height: 2.4rem; flex: 0 0 auto; background: var(--green); -webkit-mask: url(/mark.svg) center / contain no-repeat; mask: url(/mark.svg) center / contain no-repeat; }
 .mobile-bar { display: none; }
 .page-main { max-width: 960px; margin-left: clamp(280px, 21vw, 340px); padding: clamp(4rem, 9vh, 8rem) clamp(2.5rem, 5vw, 5rem) 4rem; }
 .view { width: 100%; }
@@ -77,11 +77,20 @@ textarea { width: 100%; resize: vertical; color: var(--ink); border: 1px solid #
 .share-status p { margin-top: 2rem; color: var(--ink); }
 .share-status .status-amber { color: var(--amber); }
 .human-view { max-width: 720px; }
-.human-copy { max-width: 46rem; margin: -2rem 0 1rem; color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
-.human-view .primary-action { max-width: 28rem; }
+.human-copy { max-width: 46rem; margin: -2rem 0 2rem; color: var(--muted); font-size: 1.05rem; line-height: 1.6; }
+.human-view .primary-action { max-width: 28rem; margin-top: 1.5rem; }
 .result-field { position: relative; }
 .result-field textarea { min-height: 9rem; padding: 1.25rem 1.25rem 3.65rem; font-family: var(--font-mono); line-height: 1.5; }
 .result-field textarea.is-masked { color: transparent; text-shadow: 0 0 0 var(--ink); }
+.result-field.is-sealed textarea {
+  color: transparent;
+  caret-color: transparent;
+  border-color: #b7bab4;
+  background:
+    repeating-linear-gradient(-18deg, #dfe2dc 0 10px, #e8ebe5 10px 20px),
+    var(--surface);
+  cursor: default;
+}
 .result-actions { position: absolute; right: .65rem; bottom: .5rem; display: flex; align-items: center; gap: .45rem; }
 .result-actions .text-action { min-height: 44px; padding: 0 .5rem; }
 .download-action { display: inline-flex; margin-top: 1.25rem; color: var(--green); font-family: var(--font-mono); font-weight: 650; }
@@ -91,8 +100,8 @@ textarea { width: 100%; resize: vertical; color: var(--ink); border: 1px solid #
 @media (max-width: 720px) {
   .identity-rail { display: none; }
   .mobile-bar { display: flex; align-items: center; height: 3.65rem; padding: 0 1.35rem; border-bottom: 1px solid var(--line); }
-  .brand { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 650; }
-  .brand-mark { width: 2.7rem; height: 2.15rem; }
+  .brand { font-family: var(--font-mono); font-size: 1.15rem; font-weight: 650; }
+  .brand-mark { width: 1.85rem; height: 1.85rem; }
   .page-main { margin: 0; padding: 2.5rem 1.35rem 2rem; }
   h1 { margin-bottom: 2.8rem; font-family: var(--font-display); font-size: clamp(2rem, 8vw, 2.15rem); font-weight: 400; letter-spacing: -.04em; line-height: 1.14; }
   h2 { margin-bottom: 1rem; color: var(--green); font-family: var(--font-mono); font-size: 1.25rem; font-weight: 650; letter-spacing: -.03em; }

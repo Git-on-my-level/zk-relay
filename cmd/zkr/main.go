@@ -223,7 +223,7 @@ func claim(client *http.Client, cap capability) (encryptedContainer, error) {
 	if err != nil {
 		return encryptedContainer{}, err
 	}
-	request.Header.Set("Authorization", "ZKRelay "+cap.tokenText)
+	request.Header.Set("Authorization", "zk-relay "+cap.tokenText)
 	request.Header.Set("Accept", "application/vnd.zk-relay.encrypted+json")
 	response, err := client.Do(request)
 	if err != nil {

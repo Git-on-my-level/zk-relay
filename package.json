@@ -2,6 +2,7 @@
   "name": "zk-relay",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Zero-knowledge secret sharing for people and agents.",
   "engines": {

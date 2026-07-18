@@ -103,7 +103,7 @@ test("invalid access tokens do not reveal or remove ciphertext", async () => {
   await create(object);
   const response = await object.fetch(new Request("https://zk-relay.internal/internal/reveal", {
     method: "POST",
-    headers: { authorization: "ZKRelay AAECAwQFBgcICQoLDA0ODw" }
+    headers: { authorization: "zk-relay AAECAwQFBgcICQoLDA0ODw" }
   }));
   assert.equal(response.status, 404);
   assert.equal(sql.record.ciphertext, vector.ciphertext);
@@ -115,7 +115,7 @@ test("two simultaneous removing reveals produce one encrypted response", async (
   await create(object, { expireAfterReveal: true });
   const reveal = () => object.fetch(new Request("https://zk-relay.internal/internal/reveal", {
     method: "POST",
-    headers: { authorization: `ZKRelay ${vector.key}` }
+    headers: { authorization: `zk-relay ${vector.key}` }
   }));
   const responses = await Promise.all([reveal(), reveal()]);
   const statuses = responses.map((response) => response.status).sort();
@@ -134,7 +134,7 @@ test("non-removing reveal can return ciphertext repeatedly", async () => {
   for (let index = 0; index < 2; index += 1) {
     const response = await object.fetch(new Request("https://zk-relay.internal/internal/reveal", {
       method: "POST",
-      headers: { authorization: `ZKRelay ${vector.key}` }
+      headers: { authorization: `zk-relay ${vector.key}` }
     }));
     assert.equal(response.status, 200);
   }

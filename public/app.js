@@ -15,7 +15,8 @@ const elements = {
   fileInput: el("file-input"),
   attachFile: el("attach-file"),
   fileStatus: el("file-status"),
-  keepAfterReveal: el("keep-after-reveal"),
+  expireAfterReveal: el("expire-after-reveal"),
+  expireLabel: el("expire-label"),
   createLinks: el("create-links"),
   creationError: el("creation-error"),
   humanLink: el("human-link"),
@@ -26,6 +27,8 @@ const elements = {
   revealSecret: el("reveal-secret"),
   humanError: el("human-error"),
   humanResult: el("human-result"),
+  resultField: el("result-field"),
+  resultActions: el("result-actions"),
   revealedText: el("revealed-text"),
   resultVisibility: el("result-visibility"),
   resultCopy: el("result-copy"),
@@ -37,6 +40,7 @@ let selectedFile = null;
 let secretIsVisible = false;
 let selectedDuration = 3600;
 let capability = null;
+let humanExpireAfterReveal = true;
 let revealedText = "";
 let resultIsVisible = false;
 let downloadUrl = null;
@@ -234,7 +238,7 @@ async function createLinks(event) {
       nonce: bytesToBase64Url(encrypted.nonce),
       accessTokenHash: await hashAccessToken(token),
       expiresInSeconds: selectedDuration,
-      expireAfterReveal: !elements.keepAfterReveal.checked
+      expireAfterReveal: elements.expireAfterReveal.checked
     };
     encrypted.ciphertext.fill(0);
     encrypted.nonce.fill(0);
@@ -290,12 +294,36 @@ async function copyValue(value, input, revealForFallback = null) {
   }
 }
 
+function syncExpireLabel() {
+  elements.expireLabel.textContent = elements.expireAfterReveal.checked
+    ? "Secret expires after being revealed"
+    : "Secret can be revealed many times";
+}
+
 function setResultText(value) {
   revealedText = value;
   elements.revealedText.value = resultIsVisible ? revealedText : maskValue(revealedText);
   elements.revealedText.classList.toggle("is-masked", !resultIsVisible);
   elements.resultVisibility.textContent = resultIsVisible ? "Hide" : "Show";
   elements.resultVisibility.setAttribute("aria-pressed", String(resultIsVisible));
+}
+
+function sealResult() {
+  resultIsVisible = false;
+  revealedText = "";
+  elements.resultField.classList.add("is-sealed");
+  elements.revealedText.value = "";
+  elements.revealedText.disabled = true;
+  elements.revealedText.classList.remove("is-masked");
+  elements.resultActions.hidden = true;
+  elements.resultVisibility.textContent = "Show";
+  elements.resultVisibility.setAttribute("aria-pressed", "false");
+}
+
+function unsealResult() {
+  elements.resultField.classList.remove("is-sealed");
+  elements.revealedText.disabled = false;
+  elements.resultActions.hidden = false;
 }
 
 function clearDownload() {
@@ -305,15 +333,27 @@ function clearDownload() {
   elements.fileDownload.removeAttribute("href");
 }
 
+function wipeCapability() {
+  if (!capability) return;
+  capability.key.fill(0);
+  capability.token.fill(0);
+  capability = null;
+}
+
 async function loadHumanStatus(id) {
   try {
     const result = await fetch(`/api/v1/secrets/${encodeURIComponent(id)}/status`, { cache: "no-store" });
     const status = await result.json();
     if (!result.ok || status.state !== "available") throw new Error("The secret is no longer available.");
-    elements.humanExplanation.textContent = status.expireAfterReveal
+    humanExpireAfterReveal = Boolean(status.expireAfterReveal);
+    elements.humanExplanation.textContent = humanExpireAfterReveal
       ? "You can look at this page safely. Revealing the secret will make the link stop working."
       : "You can look at this page safely. This link works until it expires.";
-    if (capability) elements.revealSecret.disabled = false;
+    if (capability) {
+      elements.revealSecret.hidden = false;
+      elements.revealSecret.disabled = false;
+      elements.revealSecret.textContent = "Reveal secret";
+    }
   } catch (error) {
     elements.humanError.textContent = error instanceof Error ? error.message : "The secret is no longer available.";
   }
@@ -322,19 +362,21 @@ async function loadHumanStatus(id) {
 async function revealHumanSecret(id) {
   if (!capability) return;
   elements.revealSecret.disabled = true;
+  elements.revealSecret.textContent = "Revealing…";
   elements.humanError.textContent = "";
   try {
     const result = await fetch(`/api/v1/secrets/${encodeURIComponent(id)}/reveal`, {
       method: "POST",
-      headers: { authorization: `ZKRelay ${capability.tokenText}`, accept: "application/vnd.zk-relay.encrypted+json" },
+      headers: { authorization: `zk-relay ${capability.tokenText}`, accept: "application/vnd.zk-relay.encrypted+json" },
       cache: "no-store"
     });
     if (!result.ok) throw new Error("The secret is no longer available.");
     const envelope = await decryptContainer(await result.json(), capability.key);
     if (envelope.kind === "text") {
       resultIsVisible = false;
-      setResultText(textDecoder.decode(envelope.bytes));
       elements.humanResult.hidden = false;
+      unsealResult();
+      setResultText(textDecoder.decode(envelope.bytes));
       clearDownload();
     } else {
       clearDownload();
@@ -346,11 +388,19 @@ async function revealHumanSecret(id) {
       elements.humanResult.hidden = true;
     }
     envelope.bytes.fill(0);
-    capability.key.fill(0);
-    capability.token.fill(0);
-    capability = null;
+    if (humanExpireAfterReveal) {
+      wipeCapability();
+      elements.revealSecret.hidden = true;
+    } else {
+      elements.revealSecret.disabled = false;
+      elements.revealSecret.textContent = "Reveal again";
+    }
   } catch (error) {
     elements.humanError.textContent = error instanceof Error ? error.message : "The secret could not be revealed.";
+    if (capability) {
+      elements.revealSecret.disabled = false;
+      elements.revealSecret.textContent = "Reveal secret";
+    }
   }
 }
 
@@ -360,6 +410,7 @@ function setupHumanRoute() {
   elements.creationView.hidden = true;
   elements.shareView.hidden = true;
   elements.humanView.hidden = false;
+  sealResult();
   try {
     capability = decodeCapabilityFragment(window.location.hash);
     history.replaceState(null, "", window.location.pathname);
@@ -380,18 +431,33 @@ function clearSensitiveState() {
   elements.humanLink.value = "";
   elements.agentLink.value = "";
   elements.revealedText.value = "";
-  if (capability) {
-    capability.key.fill(0);
-    capability.token.fill(0);
-    capability = null;
-  }
+  wipeCapability();
   clearDownload();
+}
+
+function bindResultActions() {
+  elements.resultVisibility.addEventListener("click", () => {
+    if (!revealedText) return;
+    resultIsVisible = !resultIsVisible;
+    setResultText(revealedText);
+  });
+  elements.resultCopy.addEventListener("click", () => {
+    if (!revealedText) return;
+    copyValue(revealedText, elements.revealedText, () => {
+      resultIsVisible = true;
+      setResultText(revealedText);
+    });
+  });
 }
 
 function initialize() {
   setAccentColor();
+  syncExpireLabel();
+  bindResultActions();
+  window.addEventListener("pagehide", clearSensitiveState, { once: true });
   if (setupHumanRoute()) return;
   activateCreationView();
+  elements.expireAfterReveal.addEventListener("change", syncExpireLabel);
   elements.secretInput.addEventListener("beforeinput", onSecretBeforeInput);
   elements.secretInput.addEventListener("input", onSecretInput);
   elements.secretInput.addEventListener("compositionstart", onSecretCompositionStart);
@@ -415,15 +481,6 @@ function initialize() {
     const input = el(button.dataset.target);
     copyValue(input.value, input);
   }));
-  elements.resultVisibility.addEventListener("click", () => {
-    resultIsVisible = !resultIsVisible;
-    setResultText(revealedText);
-  });
-  elements.resultCopy.addEventListener("click", () => copyValue(revealedText, elements.revealedText, () => {
-    resultIsVisible = true;
-    setResultText(revealedText);
-  }));
-  window.addEventListener("pagehide", clearSensitiveState, { once: true });
 }
 
 initialize();

@@ -10,14 +10,14 @@
   <body data-app-name="__ZK_RELAY_APP_NAME__" data-accent-color="__ZK_RELAY_ACCENT_COLOR__">
     <aside class="identity-rail" aria-label="__ZK_RELAY_APP_NAME__">
       <a class="brand" href="/" aria-label="__ZK_RELAY_APP_NAME__ home">
-        <svg class="brand-mark" aria-hidden="true"><use href="/icons.svg#mark"></use></svg>
+        <span class="brand-mark" aria-hidden="true"></span>
         <span data-brand-name>__ZK_RELAY_APP_NAME__</span>
       </a>
     </aside>
 
     <header class="mobile-bar">
       <a class="brand" href="/" aria-label="__ZK_RELAY_APP_NAME__ home">
-        <svg class="brand-mark" aria-hidden="true"><use href="/icons.svg#mark"></use></svg>
+        <span class="brand-mark" aria-hidden="true"></span>
         <span data-brand-name>__ZK_RELAY_APP_NAME__</span>
       </a>
     </header>
@@ -52,9 +52,9 @@
           </fieldset>
 
           <label class="switch-row">
-            <input id="keep-after-reveal" type="checkbox">
+            <input id="expire-after-reveal" type="checkbox">
             <span class="switch-ui" aria-hidden="true"></span>
-            <span>Do not expire after revealing</span>
+            <span id="expire-label">Secret can be revealed many times</span>
           </label>
 
           <button id="create-links" class="primary-action" type="submit" disabled>
@@ -77,7 +77,7 @@
                 <svg aria-hidden="true"><use href="/icons.svg#eye"></use></svg>
               </button>
               <button class="icon-button copy-link" type="button" data-target="human-link" aria-label="Copy human friendly link">
-                <svg aria-hidden="true"><use href="/icons.svg#clipboard"></use></svg>
+                <svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg>
               </button>
             </div>
           </div>
@@ -91,7 +91,7 @@
                 <svg aria-hidden="true"><use href="/icons.svg#eye"></use></svg>
               </button>
               <button class="icon-button copy-link" type="button" data-target="agent-link" aria-label="Copy agent friendly link">
-                <svg aria-hidden="true"><use href="/icons.svg#clipboard"></use></svg>
+                <svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg>
               </button>
             </div>
           </div>
@@ -105,18 +105,18 @@
       <section id="human-view" class="view human-view" hidden aria-labelledby="human-heading">
         <h1 id="human-heading">Someone shared a secret with you</h1>
         <p id="human-explanation" class="human-copy"></p>
-        <button id="reveal-secret" class="primary-action" type="button" disabled>Reveal secret</button>
-        <p id="human-error" class="form-error" role="alert"></p>
-        <div id="human-result" hidden>
+        <div id="human-result">
           <label class="field-label" for="revealed-text">Secret</label>
-          <div class="result-field">
-            <textarea id="revealed-text" rows="5" readonly aria-label="Revealed secret"></textarea>
-            <div class="result-actions">
+          <div class="result-field is-sealed" id="result-field">
+            <textarea id="revealed-text" rows="5" readonly aria-label="Revealed secret" disabled></textarea>
+            <div class="result-actions" id="result-actions" hidden>
               <button id="result-visibility" class="text-action" type="button" aria-pressed="false">Show</button>
-              <button id="result-copy" class="icon-button" type="button" aria-label="Copy revealed secret"><svg aria-hidden="true"><use href="/icons.svg#clipboard"></use></svg></button>
+              <button id="result-copy" class="icon-button" type="button" aria-label="Copy revealed secret"><svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg></button>
             </div>
           </div>
         </div>
+        <button id="reveal-secret" class="primary-action" type="button" disabled>Reveal secret</button>
+        <p id="human-error" class="form-error" role="alert"></p>
         <a id="file-download" class="download-action" hidden>Download file</a>
       </section>
     </main>

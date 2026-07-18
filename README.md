@@ -17,7 +17,7 @@ ZK Relay has no accounts, analytics, browser SDKs, third-party browser runtime c
 
   The official receiver accepts only complete `https://` agent links. When an explicit `--output` target is unsafe or already exists without `--force`, it rejects that target before claiming a potentially one-time secret.
 
-By default, the first successful reveal removes the encrypted payload. Enable **Do not expire after revealing** to allow repeated retrieval until the chosen time limit. The available limits are 1 hour, 1 day, and 7 days.
+By default, a secret can be revealed many times until its time limit. Enable **Secret expires after being revealed** for one-shot retrieval. The available limits are 1 hour, 1 day, and 7 days.
 
 ## Quick start
 
@@ -48,17 +48,19 @@ All non-secret settings are in `wrangler.jsonc` under `vars`:
 
 Set an actual HTTPS release base and all five checksums before making the agent link available. The preflight response exposes these values so an agent can verify a stable receiver rather than executing network-provided code.
 
-`ZK Relay` is a configurable working name, not a claimed trademark. The project also intentionally does not select a software license: choose and add an approved open-source license before public redistribution.
+`ZK Relay` is a configurable working name, not a claimed trademark. This project is licensed under the [MIT License](LICENSE).
 
 ## Publishing the receiver
 
-Build the dependency-free Go receiver for the supported platforms:
+Build and GPG-sign the dependency-free Go receiver:
 
 ```sh
 ./scripts/build-tools.sh v1.0.0
 ```
 
-This produces untracked artifacts under `dist/tools/v1.0.0/` plus `SHA256SUMS`. Upload the five binaries to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, verify them independently, then replace every `TOOL_SHA256_*` placeholder in `wrangler.jsonc` with the corresponding hash. The release process intentionally does not commit binaries or generated files.
+This produces untracked artifacts under `dist/tools/v1.0.0/` (`zkr-*`, `checksums.txt`, `SHA256SUMS`, and `SHA256SUMS.asc` when `gpg` is available). Upload those files to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, publish the matching public key (see `public/zk-relay-releases.txt`), then set every `TOOL_SHA256_*` value and `TOOL_GPG_FINGERPRINT` in `wrangler.jsonc`. Binaries are not committed.
+
+Tagged releases can be built in CI: push a `v*` tag and the Release workflow builds, signs with the `ZK_RELAY_GPG_PRIVATE_KEY` secret, and attaches artifacts to the GitHub Release.
 
 Targets are Linux x86-64 and ARM64, macOS x86-64 and ARM64, and Windows x86-64. The binary is statically built (`CGO_ENABLED=0`) and uses only Go’s standard library.
 

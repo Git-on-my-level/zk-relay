@@ -139,7 +139,7 @@ export class SecretObject {
 
   async reveal(request) {
     const authorization = request.headers.get("authorization") || "";
-    const match = /^ZKRelay ([A-Za-z0-9_-]+)$/.exec(authorization);
+    const match = /^zk-relay ([A-Za-z0-9_-]+)$/.exec(authorization);
     let suppliedHash = "";
     try {
       suppliedHash = match ? await tokenHash(match[1]) : "";

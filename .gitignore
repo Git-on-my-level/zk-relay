@@ -2,5 +2,6 @@ node_modules/
 .wrangler/
 .dev.vars
 dist/
+public/tools/**/zkr-*
 coverage/
 .DS_Store

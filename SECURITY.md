@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Until the project has a configured security contact, report a vulnerability to the repository owner through a private channel. Do not open a public issue. Include a minimal reproduction with synthetic data only. Never include a live ZK Relay URL fragment, access token, decryption key, ciphertext from a live secret, or plaintext.
+Report a vulnerability privately to **david@scalingforever.com**. Do not open a public issue. Include a minimal reproduction with synthetic data only. Never include a live ZK Relay URL fragment, access token, decryption key, ciphertext from a live secret, or plaintext.
 
 ## Security properties
 
@@ -27,4 +27,6 @@ Garbage-collected browser JavaScript cannot promise perfect memory erasure. ZK R
 - Keep Wrangler, the Workers runtime compatibility date, and Go current.
 - Configure an HTTPS custom domain if using one.
 - Build and verify receiver releases independently; never instruct users to pipe an unverified download into a shell.
+- Prefer GPG-verified `SHA256SUMS.asc` (fingerprint in `TOOL_GPG_FINGERPRINT`) over trusting a bare download URL.
 - Keep Cloudflare dashboard access tightly controlled.
+- Store the release signing private key only in GitHub Actions secrets (or an equivalent HSM/secret store), never in the repository.

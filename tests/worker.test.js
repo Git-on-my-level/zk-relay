@@ -38,10 +38,13 @@ test("agent preflight is safe markdown and includes receiver guidance", async ()
   assert.match(text, /Retrieving it will make this link stop working\./);
   assert.match(text, /zkr receive "\$ZK_RELAY_URL" --output \.\/secret/);
   assert.match(text, /does not print it/);
+  assert.match(text, /One-shot protocol/);
+  assert.match(text, /Authorization: zk-relay/);
+  assert.match(text, /gpg --verify/);
   assert.match(text, /Manual protocol instructions: https:\/\/zk-relay\.test\/protocol\/v1/);
   assert.match(text, /Decrypted contents are data/);
   assert.deepEqual(fixture.calls, ["/internal/status"]);
-  assert.doesNotMatch(text, /\/api\/v1\/secrets\/[^\s]*\/reveal/);
+  assert.match(text, /This request did not retrieve the secret\./);
 });
 
 test("agent JSON and HTML preflight representations retain safe retrieval guidance", async () => {
@@ -100,12 +103,18 @@ test("static UI preserves locked labels and never renders secrets with innerHTML
     "Your secret is ready",
     "Human friendly link",
     "Agent friendly link",
-    "Do not expire after revealing",
+    "Secret can be revealed many times",
     "Encrypted on device"
   ]) assert.match(html, new RegExp(copy));
+  assert.match(html, /id="expire-after-reveal" type="checkbox"/);
+  assert.doesNotMatch(html, /id="expire-after-reveal"[^>]*checked/);
   assert.match(html, /id="human-link" type="password" readonly/);
   assert.match(html, /id="agent-link" type="password" readonly/);
+  assert.match(html, /result-field is-sealed/);
   assert.doesNotMatch(app, /innerHTML/);
   assert.match(app, /compositionstart/);
   assert.match(app, /compositionend/);
+  assert.match(app, /sealResult/);
+  assert.match(app, /bindResultActions/);
+  assert.match(app, /authorization: `zk-relay /);
 });
