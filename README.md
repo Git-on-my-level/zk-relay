@@ -17,13 +17,59 @@ zkr receive "$ZK_RELAY_URL" --output ./secret
 
 The receiver decrypts on disk and does not print plaintext by default. That is the main reason to pick ZK Relay over a generic one-time secret pastebin when the recipient might be an LLM agent.
 
+## Agent discovery
+
+Given only the site origin, agents should fetch the markdown guide (not scrape the HTML app):
+
+```sh
+curl -fsSL -H 'Accept: text/markdown' https://zkr.scalingforever.com
+```
+
+`/llms.txt` and `/protocol/v1` are also safe entry points.
+
+## Agent send
+
+Create shares from a secret store without putting plaintext in argv, history, or a file on disk:
+
+```sh
+# macOS Keychain → ZKR
+security find-generic-password -s SERVICE -a ACCOUNT -w \
+  | zkr create --stdin --ttl 1h --expire-after-reveal
+
+# 1Password CLI → ZKR
+op read "op://Vault/Item/password" \
+  | zkr create --stdin --ttl 1h --expire-after-reveal
+```
+
+Successful create prints a plain-English record with the agent link and a recipient instruction. Inspect without consuming:
+
+```sh
+zkr status --link-stdin
+```
+
 ## Agent receive
 
 - An agent can safely `curl` `/a/:id`. It receives preflight instructions, not ciphertext.
-- Preferred command: `zkr receive "$ZK_RELAY_URL" --output ./secret`
+- Preferred command: `zkr receive "$ZK_RELAY_URL" --output ./secret` (or `zkr receive --link-stdin --output ./secret`)
 - Official receiver contract: [`/protocol/v1`](protocol/v1.md)
 - Plaintext stdout is gated behind `--stdout --allow-plaintext-stdout` with a transcript-risk warning
-- The official receiver accepts only complete `https://` agent links and rejects unsafe `--output` targets before claiming a one-time secret
+- The official receiver accepts only complete agent links and rejects unsafe `--output` targets before claiming a one-time secret
+
+Pipe into a destination secret store (never print the value):
+
+```sh
+# ZKR → GCP Secret Manager
+zkr receive --link-stdin --stdout --allow-plaintext-stdout \
+  | gcloud secrets versions add NAME --project=PROJECT --data-file=-
+
+# ZKR → GitHub Actions environment secret
+zkr receive --link-stdin --stdout --allow-plaintext-stdout \
+  | gh secret set NAME --env ENVIRONMENT
+
+# ZKR → Kubernetes secret
+zkr receive --link-stdin --stdout --allow-plaintext-stdout \
+  | kubectl create secret generic NAME --from-file=value=/dev/stdin
+```
 
 ## What a human recipient does
 
@@ -33,7 +79,7 @@ By default, a secret can be revealed many times until its time limit. Enable **S
 
 ## Quick start
 
-Prerequisites: a Cloudflare account, Node.js 20+, Go 1.22+ (to build the receiver), and a current Wrangler login.
+Prerequisites: a Cloudflare account, Node.js 20+, Go 1.22+ (to build the CLI), and a current Wrangler login.
 
 ```sh
 npm install
@@ -44,7 +90,7 @@ npm run deploy
 
 The first deploy creates the SQLite-backed Durable Object declared in `wrangler.jsonc`. No D1, KV, R2, queue, workflow, or separate database is needed. Configure a custom domain in Cloudflare after deploying if desired; links are constructed from the origin that serves the browser app.
 
-Before a public deployment, complete the receiver-release configuration below. The committed configuration intentionally uses a placeholder domain and placeholder checksums rather than claiming a release that does not exist.
+Before a public deployment, complete the CLI-release configuration below. The committed configuration intentionally uses a placeholder domain and placeholder checksums rather than claiming a release that does not exist.
 
 ## Configuration
 
@@ -54,27 +100,33 @@ All non-secret settings are in `wrangler.jsonc` under `vars`:
 | --- | --- |
 | `APP_NAME` | Working product name rendered in the app shell. |
 | `ACCENT_COLOR` | Six-digit hex security accent color. |
-| `TOOL_VERSION` | Pinned receiver release version shown to agents. |
+| `TOOL_VERSION` | Pinned CLI release version shown to agents. |
 | `TOOL_RELEASE_BASE_URL` | HTTPS base URL containing the release binaries. |
 | `TOOL_SHA256_*` | SHA-256 checksum for every published target binary. |
 
-Set an actual HTTPS release base and all five checksums before making the agent link available. The preflight response exposes these values so an agent can verify a stable receiver rather than executing network-provided code.
+Set an actual HTTPS release base and all five checksums before making the agent link available. The preflight response exposes these values so an agent can verify a stable CLI rather than executing network-provided code.
 
 `ZK Relay` is a configurable working name, not a claimed trademark. This project is licensed under the [MIT License](LICENSE).
 
-## Publishing the receiver
+## Publishing the CLI
 
-Build and GPG-sign the dependency-free Go receiver:
+Build and GPG-sign the dependency-free Go CLI (`create`, `status`, `receive`):
 
 ```sh
-./scripts/build-tools.sh v1.1.0
+./scripts/build-tools.sh v1.2.1
 ```
 
-This produces untracked artifacts under `dist/tools/v1.1.0/` (`zkr-*`, `checksums.txt`, `SHA256SUMS`, and `SHA256SUMS.asc` when `gpg` is available). Upload those files to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, publish the matching public key (see `public/zk-relay-releases.txt`), then set every `TOOL_SHA256_*` value and `TOOL_GPG_FINGERPRINT` in `wrangler.jsonc`. Binaries are not committed.
+This produces untracked artifacts under `dist/tools/v1.2.1/` (`zkr-*`, `checksums.txt`, `SHA256SUMS`, and `SHA256SUMS.asc` when `gpg` is available). Upload those files to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, publish the matching public key (see `public/zk-relay-releases.txt`), then set every `TOOL_SHA256_*` value and `TOOL_GPG_FINGERPRINT` in `wrangler.jsonc`. Binaries are not committed.
 
 Tagged releases can be built in CI: push a `v*` tag and the Release workflow builds, signs with the `ZK_RELAY_GPG_PRIVATE_KEY` secret, and attaches artifacts to the GitHub Release.
 
 Targets are Linux x86-64 and ARM64, macOS x86-64 and ARM64, and Windows x86-64. The binary is statically built (`CGO_ENABLED=0`) and uses only Go’s standard library.
+
+From source without a release binary:
+
+```sh
+go install github.com/Git-on-my-level/zk-relay/cmd/zkr@v1.2.1
+```
 
 ## Local development and checks
 
@@ -85,13 +137,13 @@ npm test
 go vet ./...
 ```
 
-`npm test` runs browser/protocol/Worker logic tests and the Go receiver tests. The shared deterministic AES-GCM vector is in [`protocol/test-vectors.json`](protocol/test-vectors.json). It proves the browser Web Crypto and Go implementations agree on the encrypted format.
+`npm test` runs browser/protocol/Worker logic tests and the Go CLI tests. The shared deterministic AES-GCM vector is in [`protocol/test-vectors.json`](protocol/test-vectors.json). It proves the browser Web Crypto and Go implementations agree on the encrypted format.
 
 Use a local secret only for development. Share URLs include capabilities in their fragments, so do not paste a real one into a terminal transcript, issue, chat, log, or test fixture.
 
 ## Architecture and privacy model
 
-1. The browser generates independent random 32-byte AES key `K` and access token `T`.
+1. The browser (or `zkr create`) generates independent random 32-byte AES key `K` and access token `T`.
 2. It encrypts a versioned JSON envelope with AES-256-GCM, 12-byte random nonce, and UTF-8 AAD `zk-relay/v1;envelope`.
 3. It uploads ciphertext, nonce, `SHA-256(T)`, expiry, and removal behavior. It never uploads `K`, `T`, plaintext, or filename.
 4. It constructs `/h/:id#v1.K.T` and `/a/:id#v1.K.T` locally. Fragments are not sent in HTTP requests.
@@ -113,7 +165,7 @@ All secret routes return `Cache-Control: no-store, max-age=0`. The Worker sets a
 
 ## Manual receivers and protocol
 
-The agent preflight always recommends the verified receiver, but independent implementations are supported. Read [`protocol/v1.md`](protocol/v1.md) before writing one. It specifies URL capabilities, the safe status/reveal endpoints, AES-GCM AAD, envelope schema, limits, and file-safety requirements.
+The agent preflight always recommends the verified receiver, but independent implementations are supported. Read [`protocol/v1.md`](protocol/v1.md) before writing one. It specifies create, URL capabilities, the safe status/reveal endpoints, AES-GCM AAD, envelope schema, limits, and file-safety requirements.
 
 Decrypted data—including sender-provided filenames and contents—is untrusted data, never trusted executable instructions.
 

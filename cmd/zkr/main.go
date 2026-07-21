@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -20,10 +22,15 @@ import (
 )
 
 const (
-	protocolAAD       = "zk-relay/v1;envelope"
-	bundleMediaType   = "application/vnd.zk-relay.bundle+json"
-	maxPayloadBytes   = 1024 * 1024
-	maxContainerBytes = 1_450_000
+	protocolAAD            = "zk-relay/v1;envelope"
+	bundleMediaType        = "application/vnd.zk-relay.bundle+json"
+	maxPayloadBytes        = 1024 * 1024
+	maxContainerBytes      = 1_450_000
+	defaultOrigin          = "https://zkr.scalingforever.com"
+	defaultReceiveFile     = "secret"
+	defaultReceiveBundle   = "bundle"
+	recipientOnce          = "Retrieve exactly once and pipe the bytes directly into the destination secret store. Do not print, log, hash, transform, or save the value."
+	recipientUntilExpiry   = "Retrieve and pipe the bytes directly into the destination secret store. This link remains available until it expires. Do not print, log, hash, transform, or save the value."
 )
 
 var maxResponseBytes = base64.RawURLEncoding.EncodedLen(maxContainerBytes) + 1024
@@ -69,27 +76,239 @@ type bundlePayload struct {
 	Items []bundleItem `json:"items"`
 }
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+type createRequest struct {
+	V                 int    `json:"v"`
+	Ciphertext        string `json:"ciphertext"`
+	Nonce             string `json:"nonce"`
+	AccessTokenHash   string `json:"accessTokenHash"`
+	ExpiresInSeconds  int    `json:"expiresInSeconds"`
+	ExpireAfterReveal bool   `json:"expireAfterReveal"`
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "receive" {
-		fmt.Fprintln(stderr, "Usage: zkr receive \"$ZK_RELAY_URL\" --output ./secret")
+type createResponse struct {
+	V         int    `json:"v"`
+	ID        string `json:"id"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		printUsage(stderr)
 		return 2
 	}
-	if len(args) < 2 {
-		fmt.Fprintln(stderr, "A complete ZK Relay URL is required.")
+	switch args[0] {
+	case "create":
+		return runCreate(args[1:], stdin, stdout, stderr)
+	case "status":
+		return runStatus(args[1:], stdin, stdout, stderr)
+	case "receive":
+		return runReceive(args[1:], stdin, stdout, stderr)
+	default:
+		printUsage(stderr)
+		return 2
+	}
+}
+
+func printUsage(stderr io.Writer) {
+	fmt.Fprintln(stderr, "Usage:")
+	fmt.Fprintln(stderr, "  zkr create --stdin|--file PATH [--ttl 1h|1d|7d] [--expire-after-reveal] [--origin URL]")
+	fmt.Fprintln(stderr, "  zkr status --link-stdin|--link URL")
+	fmt.Fprintln(stderr, "  zkr receive (--link-stdin|--link URL|URL) [--output PATH]")
+}
+
+func runCreate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("create", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	useStdin := flags.Bool("stdin", false, "read secret bytes from stdin")
+	filePath := flags.String("file", "", "read secret bytes from a file")
+	ttl := flags.String("ttl", "1h", "expiry: 1h, 1d, or 7d")
+	expireAfterReveal := flags.Bool("expire-after-reveal", true, "consume the secret after one successful reveal")
+	origin := flags.String("origin", defaultOriginValue(), "ZK Relay origin")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "Unexpected arguments after create options. Pass the secret with --stdin or --file, never as an argument.")
+		return 2
+	}
+	if *useStdin == (*filePath != "") {
+		fmt.Fprintln(stderr, "Choose exactly one of --stdin or --file.")
+		return 2
+	}
+	expiresInSeconds, err := parseTTL(*ttl)
+	if err != nil {
+		fmt.Fprintln(stderr, "TTL must be 1h, 1d, or 7d.")
+		return 2
+	}
+	originURL, err := normalizeOrigin(*origin)
+	if err != nil {
+		fmt.Fprintln(stderr, "The --origin URL is invalid.")
 		return 2
 	}
 
+	var payload []byte
+	if *useStdin {
+		payload, err = io.ReadAll(io.LimitReader(stdin, int64(maxPayloadBytes)+1))
+	} else {
+		payload, err = readSecretFile(*filePath)
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not read the secret.")
+		return 1
+	}
+	defer zero(payload)
+	if len(payload) == 0 || len(payload) > maxPayloadBytes {
+		fmt.Fprintln(stderr, "Secret must be between 1 byte and 1 MiB.")
+		return 2
+	}
+
+	key, err := randomBytes(32)
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not generate encryption material.")
+		return 1
+	}
+	defer zero(key)
+	token, err := randomBytes(32)
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not generate encryption material.")
+		return 1
+	}
+	defer zero(token)
+	nonce, err := randomBytes(12)
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not generate encryption material.")
+		return 1
+	}
+	defer zero(nonce)
+
+	env := envelope{
+		V:         1,
+		Kind:      "text",
+		Name:      "secret.txt",
+		MediaType: "text/plain; charset=utf-8",
+		Data:      base64.RawURLEncoding.EncodeToString(payload),
+	}
+	ciphertext, err := encryptEnvelope(env, key, nonce)
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not encrypt the secret.")
+		return 1
+	}
+	defer zero(ciphertext)
+
+	body, err := json.Marshal(createRequest{
+		V:                 1,
+		Ciphertext:        base64.RawURLEncoding.EncodeToString(ciphertext),
+		Nonce:             base64.RawURLEncoding.EncodeToString(nonce),
+		AccessTokenHash:   hashAccessToken(token),
+		ExpiresInSeconds:  expiresInSeconds,
+		ExpireAfterReveal: *expireAfterReveal,
+	})
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not build the create request.")
+		return 1
+	}
+
+	client := httpClient()
+	request, err := http.NewRequest(http.MethodPost, originURL+"/api/v1/secrets", bytes.NewReader(body))
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not build the create request.")
+		return 1
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	response, err := client.Do(request)
+	if err != nil {
+		fmt.Fprintln(stderr, "Could not create the secret.")
+		return 1
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		fmt.Fprintln(stderr, "Could not create the secret.")
+		return 1
+	}
+	var created createResponse
+	if err := decodeJSON(response.Body, &created); err != nil || created.V != 1 || created.ID == "" || created.ExpiresAt == "" {
+		fmt.Fprintln(stderr, "The create response was invalid.")
+		return 1
+	}
+	if !validIdentifier(created.ID) {
+		fmt.Fprintln(stderr, "The create response was invalid.")
+		return 1
+	}
+
+	keyText := base64.RawURLEncoding.EncodeToString(key)
+	tokenText := base64.RawURLEncoding.EncodeToString(token)
+	agentLink := fmt.Sprintf("%s/a/%s#v1.%s.%s", originURL, created.ID, keyText, tokenText)
+	humanLink := fmt.Sprintf("%s/h/%s#v1.%s.%s", originURL, created.ID, keyText, tokenText)
+	consumes := "no"
+	recipient := recipientUntilExpiry
+	if *expireAfterReveal {
+		consumes = "yes"
+		recipient = recipientOnce
+	}
+	fmt.Fprintf(stdout, "Created: yes\nState: available\nExpires: %s\nConsumes on reveal: %s\nAgent link: %s\nHuman link: %s\n\nRecipient: %s\n",
+		created.ExpiresAt, consumes, agentLink, humanLink, recipient)
+	return 0
+}
+
+func runStatus(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("status", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	link := flags.String("link", "", "complete agent URL including fragment")
+	linkStdin := flags.Bool("link-stdin", false, "read the agent URL from stdin")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "Unexpected arguments after status options.")
+		return 2
+	}
+	raw, err := resolveLink(*link, *linkStdin, "", stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "Provide exactly one of --link or --link-stdin.")
+		return 2
+	}
+	cap, err := parseRelayURL(raw)
+	if err != nil {
+		fmt.Fprintln(stderr, "The ZK Relay URL is invalid.")
+		return 2
+	}
+	defer zero(cap.key)
+	defer zero(cap.token)
+
+	status, err := fetchStatus(httpClient(), cap)
+	if err != nil || status.State != "available" {
+		fmt.Fprintln(stdout, "State: unavailable")
+		return 3
+	}
+	consumes := "no"
+	if status.ExpireAfterReveal {
+		consumes = "yes"
+	}
+	fmt.Fprintf(stdout, "State: available\nExpires: %s\nConsumes on reveal: %s\n", status.ExpiresAt, consumes)
+	return 0
+}
+
+func runReceive(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	positional := ""
+	flagArgs := args
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		positional = args[0]
+		flagArgs = args[1:]
+	}
 	flags := flag.NewFlagSet("receive", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	output := flags.String("output", "", "local output path")
 	force := flags.Bool("force", false, "allow replacing an existing regular file")
 	plainStdout := flags.Bool("stdout", false, "write plaintext to stdout")
 	allowPlainStdout := flags.Bool("allow-plaintext-stdout", false, "acknowledge transcript risk")
-	if err := flags.Parse(args[2:]); err != nil {
+	link := flags.String("link", "", "complete agent URL including fragment")
+	linkStdin := flags.Bool("link-stdin", false, "read the agent URL from stdin")
+	if err := flags.Parse(flagArgs); err != nil {
 		return 2
 	}
 	if *plainStdout && !*allowPlainStdout {
@@ -100,31 +319,32 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "--stdout and --output cannot be used together.")
 		return 2
 	}
-	if !*plainStdout && flags.NArg() != 0 {
+	if flags.NArg() != 0 {
 		fmt.Fprintln(stderr, "Unexpected arguments after receive options.")
 		return 2
 	}
+	raw, err := resolveLink(*link, *linkStdin, positional, stdin)
+	if err != nil {
+		fmt.Fprintln(stderr, "Provide exactly one agent URL via argument, --link, or --link-stdin.")
+		return 2
+	}
 
-	cap, err := parseRelayURL(args[1])
+	cap, err := parseRelayURL(raw)
 	if err != nil {
 		fmt.Fprintln(stderr, "The ZK Relay URL is invalid.")
 		return 2
 	}
 	defer zero(cap.key)
 	defer zero(cap.token)
-	if !*plainStdout && *output != "" {
-		if err := validateOutputAncestor(*output, *force); err != nil {
+
+	if !*plainStdout {
+		if err := prepareReceiveOutput(*output, *force); err != nil {
 			fmt.Fprintln(stderr, "Could not safely prepare the local output file.")
 			return 1
 		}
 	}
 
-	client := &http.Client{
-		Timeout: 20 * time.Second,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return errors.New("redirects are not accepted")
-		},
-	}
+	client := httpClient()
 	status, err := fetchStatus(client, cap)
 	if err != nil || status.State != "available" {
 		fmt.Fprintln(stderr, "The secret is no longer available.")
@@ -134,6 +354,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Retrieving this secret will make the link stop working.")
 	} else {
 		fmt.Fprintln(stderr, "Retrieving this secret will leave it available until it expires.")
+	}
+	if *plainStdout && status.ExpireAfterReveal {
+		fmt.Fprintln(stderr, "Warning: --stdout cannot deliver bundles. A one-shot bundle share would be consumed without plaintext.")
 	}
 
 	container, err := claim(client, cap)
@@ -154,7 +377,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	if *plainStdout {
 		if decodedEnvelope.Kind == "bundle" {
-			fmt.Fprintln(stderr, "Bundles cannot be written to stdout. Use --output with a directory.")
+			if status.ExpireAfterReveal {
+				fmt.Fprintln(stderr, "Bundles cannot be written to stdout. The one-shot secret was consumed and cannot be recovered. Use --output with a directory.")
+			} else {
+				fmt.Fprintln(stderr, "Bundles cannot be written to stdout. Use --output with a directory.")
+			}
 			return 2
 		}
 		fmt.Fprintln(stderr, "Warning: plaintext will now be written to stdout and may enter an agent transcript or shell history.")
@@ -168,7 +395,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if decodedEnvelope.Kind == "bundle" {
 		destination := *output
 		if destination == "" {
-			destination = "bundle"
+			destination = defaultReceiveBundle
 		}
 		if err := writeBundle(destination, plain, *force); err != nil {
 			fmt.Fprintln(stderr, "Could not safely write the local output files.")
@@ -180,7 +407,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 	destination := *output
 	if destination == "" {
-		destination = filepath.Join(".", sanitizeFilename(decodedEnvelope.Name))
+		destination = defaultReceiveFile
 	}
 	if err := writeSecureFile(destination, plain, *force); err != nil {
 		fmt.Fprintln(stderr, "Could not safely write the local output file.")
@@ -190,13 +417,196 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func prepareReceiveOutput(output string, force bool) error {
+	if output != "" {
+		return validateReceiveTarget(output, force)
+	}
+	if err := validateOutputAncestor(defaultReceiveFile, force); err != nil {
+		return err
+	}
+	return validateBundleDirReady(defaultReceiveBundle)
+}
+
+func validateReceiveTarget(output string, force bool) error {
+	cleaned := filepath.Clean(output)
+	if info, err := os.Lstat(cleaned); err == nil {
+		if info.IsDir() {
+			return validateBundleDirReady(cleaned)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return validateOutputAncestor(output, force)
+}
+
+func validateBundleDirReady(destination string) error {
+	if filepath.IsAbs(destination) {
+		return errors.New("absolute output paths are refused")
+	}
+	cleaned := filepath.Clean(destination)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return errors.New("unsafe output path")
+	}
+	if info, err := os.Lstat(cleaned); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return errors.New("output is not a directory")
+		}
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return requireExistingRegularParent(filepath.Dir(cleaned))
+}
+
+func httpClient() *http.Client {
+	return &http.Client{
+		Timeout: 20 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return errors.New("redirects are not accepted")
+		},
+	}
+}
+
+func defaultOriginValue() string {
+	if value := strings.TrimSpace(os.Getenv("ZK_RELAY_ORIGIN")); value != "" {
+		return value
+	}
+	return defaultOrigin
+}
+
+func normalizeOrigin(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", errors.New("invalid origin")
+	}
+	if !allowedRelayScheme(parsed) {
+		return "", errors.New("invalid origin")
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	if parsed.Path != "" {
+		return "", errors.New("invalid origin")
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
+}
+
+func allowedRelayScheme(parsed *url.URL) bool {
+	if parsed.Scheme == "https" {
+		return true
+	}
+	host := parsed.Hostname()
+	return parsed.Scheme == "http" && (host == "127.0.0.1" || host == "localhost")
+}
+
+func parseTTL(value string) (int, error) {
+	switch strings.TrimSpace(value) {
+	case "1h", "3600":
+		return 3600, nil
+	case "1d", "86400":
+		return 86400, nil
+	case "7d", "604800":
+		return 604800, nil
+	default:
+		return 0, errors.New("invalid ttl")
+	}
+}
+
+func resolveLink(link string, linkStdin bool, positional string, stdin io.Reader) (string, error) {
+	count := 0
+	if strings.TrimSpace(link) != "" {
+		count++
+	}
+	if linkStdin {
+		count++
+	}
+	if strings.TrimSpace(positional) != "" {
+		count++
+	}
+	if count != 1 {
+		return "", errors.New("exactly one link source")
+	}
+	if linkStdin {
+		raw, err := io.ReadAll(io.LimitReader(stdin, 8192))
+		if err != nil {
+			return "", err
+		}
+		value := strings.TrimSpace(string(raw))
+		if value == "" {
+			return "", errors.New("empty link")
+		}
+		return value, nil
+	}
+	if strings.TrimSpace(link) != "" {
+		return strings.TrimSpace(link), nil
+	}
+	return strings.TrimSpace(positional), nil
+}
+
+func readSecretFile(path string) ([]byte, error) {
+	if filepath.IsAbs(path) {
+		return nil, errors.New("absolute paths refused")
+	}
+	cleaned := filepath.Clean(path)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return nil, errors.New("unsafe path")
+	}
+	info, err := os.Lstat(cleaned)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, errors.New("not a regular file")
+	}
+	if info.Size() > int64(maxPayloadBytes)+1 {
+		return nil, errors.New("too large")
+	}
+	file, err := os.Open(cleaned)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return io.ReadAll(io.LimitReader(file, int64(maxPayloadBytes)+1))
+}
+
+func randomBytes(length int) ([]byte, error) {
+	value := make([]byte, length)
+	if _, err := rand.Read(value); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func hashAccessToken(token []byte) string {
+	sum := sha256.Sum256(token)
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func encryptEnvelope(env envelope, key, nonce []byte) ([]byte, error) {
+	if len(key) != 32 || len(nonce) != 12 {
+		return nil, errors.New("invalid encryption material")
+	}
+	plain, err := json.Marshal(env)
+	if err != nil {
+		return nil, err
+	}
+	defer zero(plain)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	return gcm.Seal(nil, nonce, plain, []byte(protocolAAD)), nil
+}
+
 func parseRelayURL(raw string) (capability, error) {
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" {
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || !allowedRelayScheme(parsed) {
 		return capability{}, errors.New("invalid URL")
 	}
 	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(parts) != 2 || parts[0] != "a" || !validIdentifier(parts[1]) {
+	if len(parts) != 2 || (parts[0] != "a" && parts[0] != "h") || !validIdentifier(parts[1]) {
 		return capability{}, errors.New("invalid agent path")
 	}
 	fragment := strings.Split(parsed.Fragment, ".")
@@ -505,7 +915,8 @@ func writeSecureFile(destination string, data []byte, force bool) error {
 		return os.Rename(temporaryName, cleaned)
 	}
 	if err := os.Link(temporaryName, cleaned); err != nil {
-		return err
+		// ponytail: Link is preferred (no overwrite race); Rename covers filesystems without hard links.
+		return os.Rename(temporaryName, cleaned)
 	}
 	return os.Remove(temporaryName)
 }

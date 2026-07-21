@@ -1,24 +1,41 @@
 # ZK Relay
 
-> Self-hosted zero-knowledge secret sharing for humans and agents. Yopass-style links; agent-safe receive.
+> Self-hosted zero-knowledge secret sharing for humans and agents. Yopass-style links; agent-safe send and receive.
 
-ZK Relay is a Cloudflare Worker that stores only ciphertext. The sender's browser encrypts; recipients decrypt locally. Each share has a human link (`/h/:id`) and an agent link (`/a/:id`).
+ZK Relay is a Cloudflare Worker that stores only ciphertext. Clients encrypt locally; recipients decrypt locally. Each share has a human link (`/h/:id`) and an agent link (`/a/:id`).
 
-## When to use
+## Discover (when given only the site URL)
 
-- Share a password, API token, or small file with a person or a tool-using agent
-- Prefer one-time or time-limited retrieval without accounts
-- Need agents to fetch safely without putting plaintext in a chat transcript
+```sh
+curl -fsSL -H 'Accept: text/markdown' https://zkr.scalingforever.com
+```
 
-## Agent receive (preferred)
+Or read `/llms.txt`. Protocol: `/protocol/v1`
+
+## Agent send
+
+```sh
+security find-generic-password -s SERVICE -a ACCOUNT -w \
+  | zkr create --stdin --ttl 1h --expire-after-reveal
+```
+
+Secret bytes must arrive via stdin or `--file`, never as a command argument. Default create output is plain English with the agent link and a recipient instruction.
+
+## Agent receive
 
 Agent links return preflight instructions, not ciphertext. Preferred command:
 
 ```sh
-zkr receive "$ZK_RELAY_URL" --output ./secret
+zkr receive --link-stdin --output ./secret
 ```
 
-Receiver contract: /protocol/v1
+Plaintext stdout is gated: `--stdout --allow-plaintext-stdout` (pipe into a secret store; do not print).
+
+## Status (non-consuming)
+
+```sh
+zkr status --link-stdin
+```
 
 ## Humans
 

@@ -74,6 +74,18 @@ test("agent JSON and HTML preflight representations retain safe retrieval guidan
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
 });
 
+test("agent preflight Accept matching is case-insensitive", async () => {
+  const fixture = statusEnvironment();
+  const response = await handleRequest(new Request("https://zk-relay.test/a/abcdefghijklmnopqrstuv", {
+    headers: { accept: "Application/JSON" }
+  }), fixture.env);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /application\/json/);
+  const manifest = await response.json();
+  assert.equal(manifest.protocol, "zk-relay/v1");
+  assert.equal(manifest.receiverContract.file_safety.filename.fallback, "secret");
+});
+
 test("safe status route does not pass authorization and bad create is rejected before storage", async () => {
   const fixture = statusEnvironment();
   const statusResponse = await handleRequest(new Request("https://zk-relay.test/api/v1/secrets/abcdefghijklmnopqrstuv/status"), fixture.env);
@@ -83,7 +95,7 @@ test("safe status route does not pass authorization and bad create is rejected b
   const createResponse = await handleRequest(new Request("https://zk-relay.test/api/v1/secrets", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ v: 1, expiresInSeconds: 12, expireAfterReveal: true })
+    body: JSON.stringify({ v: 1, expiresInSeconds: 3600, expireAfterReveal: true })
   }), fixture.env);
   assert.equal(createResponse.status, 400);
   assert.deepEqual(fixture.calls, ["/internal/status"]);
@@ -112,7 +124,7 @@ test("home shell is indexable; human secret shell is not", async () => {
     }
   };
 
-  const home = await handleRequest(new Request("https://zk-relay.test/"), env);
+  const home = await handleRequest(new Request("https://zk-relay.test/", { headers: { accept: "text/html" } }), env);
   const homeHtml = await home.text();
   assert.equal(home.status, 200);
   assert.match(homeHtml, /<meta name="robots" content="index,follow">/);
@@ -121,12 +133,37 @@ test("home shell is indexable; human secret shell is not", async () => {
   assert.match(homeHtml, /<title>ZK Relay — secret sharing for humans and agents<\/title>/);
   assert.match(homeHtml, /property="og:title"/);
 
-  const human = await handleRequest(new Request("https://zk-relay.test/h/abcdefghijklmnopqrstuv"), env);
+  const human = await handleRequest(new Request("https://zk-relay.test/h/abcdefghijklmnopqrstuv", { headers: { accept: "text/html" } }), env);
   const humanHtml = await human.text();
   assert.equal(human.status, 200);
   assert.match(humanHtml, /<meta name="robots" content="noindex,nofollow">/);
   assert.match(humanHtml, /<title>ZK Relay — encrypted secret<\/title>/);
   assert.match(humanHtml, /<link rel="canonical" href="https:\/\/zk-relay\.test\/">/);
+});
+
+test("home Accept negotiation returns agent send/receive guide without the SPA shell", async () => {
+  const fixture = statusEnvironment();
+  const markdown = await handleRequest(new Request("https://zk-relay.test/", { headers: { accept: "text/markdown" } }), fixture.env);
+  const markdownText = await markdown.text();
+  assert.equal(markdown.status, 200);
+  assert.match(markdown.headers.get("content-type"), /text\/markdown/);
+  assert.match(markdownText, /zkr create --stdin/);
+  assert.match(markdownText, /zkr status --link-stdin/);
+  assert.match(markdownText, /zkr receive --link-stdin --output \.\/secret/);
+  assert.match(markdownText, /\/protocol\/v1/);
+  assert.doesNotMatch(markdownText, /<html/i);
+
+  const jsonResponse = await handleRequest(new Request("https://zk-relay.test/", { headers: { accept: "application/json" } }), fixture.env);
+  const guide = await jsonResponse.json();
+  assert.equal(jsonResponse.status, 200);
+  assert.equal(guide.protocol, "zk-relay/v1");
+  assert.match(guide.commands.create, /zkr create --stdin/);
+  assert.equal(guide.commands.status, "zkr status --link-stdin");
+  assert.equal(guide.discover.llmsTxt, "https://zk-relay.test/llms.txt");
+
+  const star = await handleRequest(new Request("https://zk-relay.test/", { headers: { accept: "*/*" } }), fixture.env);
+  assert.match(star.headers.get("content-type"), /text\/markdown/);
+  assert.match(await star.text(), /Install zkr/);
 });
 
 test("robots.txt and llms.txt advertise the product without secret routes", async () => {
@@ -139,7 +176,8 @@ test("robots.txt and llms.txt advertise the product without secret routes", asyn
   assert.match(robots, /Disallow: \/a\//);
   assert.match(robots, /Disallow: \/api\//);
   assert.match(llms, /Yopass-style/);
-  assert.match(llms, /zkr receive "\$ZK_RELAY_URL" --output \.\/secret/);
+  assert.match(llms, /zkr create --stdin/);
+  assert.match(llms, /zkr receive --link-stdin --output \.\/secret/);
   assert.match(llms, /\/protocol\/v1/);
 });
 
@@ -153,11 +191,11 @@ test("static UI preserves locked labels and never renders secrets with innerHTML
     "Your secret is ready",
     "Human friendly link",
     "Agent friendly link",
-    "Expire off: Secret can be revealed many times",
+    "Expire on: Secret expires after being revealed",
     "Encrypted on device"
   ]) assert.match(html, new RegExp(copy));
-  assert.match(html, /id="expire-after-reveal" type="checkbox"/);
-  assert.doesNotMatch(html, /id="expire-after-reveal"[^>]*checked/);
+  assert.match(html, /id="expire-after-reveal" type="checkbox" checked/);
+  assert.match(app, /Expire off: Secret can be revealed many times/);
   assert.match(html, /id="human-link" type="password" readonly/);
   assert.match(html, /id="agent-link" type="password" readonly/);
   assert.match(html, /result-field is-sealed/);

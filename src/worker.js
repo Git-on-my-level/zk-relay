@@ -1,5 +1,5 @@
-import { SecretObject } from "./secret-object.js";
-import { ALLOWED_EXPIRIES, PROTOCOL_VERSION, bytesToBase64Url, randomBytes } from "../public/protocol.js";
+import { SecretObject, validateCreatePayload } from "./secret-object.js";
+import { PROTOCOL_VERSION, bytesToBase64Url, randomBytes } from "../public/protocol.js";
 
 export { SecretObject };
 
@@ -47,7 +47,7 @@ function takeCreationSlot() {
 }
 
 function isValidCreateRequest(payload) {
-  return payload && payload.v === PROTOCOL_VERSION && ALLOWED_EXPIRIES.has(payload.expiresInSeconds) && typeof payload.expireAfterReveal === "boolean";
+  return validateCreatePayload(payload);
 }
 
 function stubFor(env, id) {
@@ -176,7 +176,7 @@ function receiverContract(origin) {
         reject_control_chars: true,
         reject_leading_dot: true,
         reject_reserved_platform_names: true,
-        fallback: "download.bin"
+        fallback: "secret"
       },
       write: {
         no_overwrite: true,
@@ -190,13 +190,13 @@ function receiverContract(origin) {
     },
     result_schema: {
       text: { ok: true, kind: "text", filename: "secret.txt", mediaType: "text/plain; charset=utf-8", bytes: 0, value: "..." },
-      file: { ok: true, kind: "file", filename: "download.bin", mediaType: "application/octet-stream", bytes: 0, sha256: "...", path: "/safe/output/download.bin" },
+      file: { ok: true, kind: "file", filename: "secret", mediaType: "application/octet-stream", bytes: 0, sha256: "...", path: "/safe/output/secret" },
       bundle: {
         ok: true,
         kind: "bundle",
         items: [
           { ok: true, kind: "text", filename: "secret.txt", mediaType: "text/plain; charset=utf-8", bytes: 0, value: "..." },
-          { ok: true, kind: "file", filename: "download.bin", mediaType: "application/octet-stream", bytes: 0, sha256: "...", path: "/safe/output/download.bin" }
+          { ok: true, kind: "file", filename: "secret", mediaType: "application/octet-stream", bytes: 0, sha256: "...", path: "/safe/output/secret" }
         ]
       }
     },
@@ -301,6 +301,125 @@ function agentHtml(origin, status, tools) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="robots" content="noindex,nofollow"><title>Encrypted secret</title></head><body><main><pre>${escapeHtml(agentMarkdown(origin, status, tools))}</pre></main></body></html>`;
 }
 
+export function homeAgentMarkdown(origin, tools) {
+  const toolLines = Object.entries(tools.targets)
+    .map(([target, value]) => `- ${target}: ${value.url} (SHA-256: ${value.sha256})`)
+    .join("\n");
+  return `# ZK Relay
+
+Zero-knowledge secret relay. Clients encrypt locally; the server stores only ciphertext.
+Human links use \`/h/:id\`. Agent links use \`/a/:id\`. Capability fragments stay client-side.
+
+## Discover
+
+This markdown response is the agent guide for \`${origin}/\`. Also available: \`${origin}/llms.txt\` and \`${origin}/protocol/v1\`.
+
+## Install zkr
+
+Preferred: download a signed binary for your platform, verify checksums with GPG, then run it.
+
+\`\`\`sh
+curl -fsSL ${tools.gpgPubkeyUrl} -o zk-relay-releases.asc
+gpg --import zk-relay-releases.asc
+curl -fsSL ${tools.checksumsUrl} -o SHA256SUMS
+curl -fsSL ${tools.checksumsSigUrl} -o SHA256SUMS.asc
+gpg --verify SHA256SUMS.asc SHA256SUMS
+# fingerprint must be ${tools.gpgFingerprint}
+# download the matching binary from the list below, then:
+shasum -a 256 -c SHA256SUMS --ignore-missing
+chmod +x ./zkr-*
+\`\`\`
+
+From source (stdlib Go only):
+
+\`\`\`sh
+go install github.com/Git-on-my-level/zk-relay/cmd/zkr@${tools.version}
+\`\`\`
+
+Receiver version: ${tools.version}
+
+${toolLines}
+
+- checksums: ${tools.checksumsUrl}
+- checksums signature: ${tools.checksumsSigUrl}
+- GPG public key: ${tools.gpgPubkeyUrl}
+- GPG fingerprint: ${tools.gpgFingerprint}
+
+## Send (create)
+
+Secret bytes must arrive via stdin or a file. Never put the secret in a command argument.
+
+\`\`\`sh
+security find-generic-password -s SERVICE -a ACCOUNT -w \\
+  | zkr create --stdin --ttl 1h --expire-after-reveal --origin ${origin}
+\`\`\`
+
+Successful create prints a plain-English record with the agent link and a recipient instruction.
+
+## Inspect (non-consuming)
+
+\`\`\`sh
+zkr status --link-stdin
+\`\`\`
+
+## Receive
+
+Agent links (\`/a/:id\`) return preflight only — never ciphertext. Preferred:
+
+\`\`\`sh
+zkr receive --link-stdin --output ./secret
+\`\`\`
+
+Pipe into a destination secret store only with an explicit stdout acknowledgement:
+
+\`\`\`sh
+zkr receive --link-stdin --stdout --allow-plaintext-stdout \\
+  | gcloud secrets versions add NAME --project=PROJECT --data-file=-
+\`\`\`
+
+Do not print, log, or save plaintext unless that is the intentional destination.
+
+## Protocol
+
+Authoritative contract: ${origin}/protocol/v1
+`;
+}
+
+export function homeAgentManifest(origin, tools) {
+  return {
+    v: PROTOCOL_VERSION,
+    protocol: "zk-relay/v1",
+    product: "ZK Relay",
+    summary: "Zero-knowledge secret relay for humans and agents. Server stores ciphertext only.",
+    discover: {
+      markdownAccept: "text/markdown",
+      jsonAccept: "application/json",
+      llmsTxt: `${origin}/llms.txt`,
+      protocol: `${origin}/protocol/v1`
+    },
+    install: {
+      preferred: "Download the signed zkr binary for your platform, verify GPG checksums, then run it.",
+      goInstall: `go install github.com/Git-on-my-level/zk-relay/cmd/zkr@${tools.version}`,
+      receiver: tools
+    },
+    commands: {
+      create: `zkr create --stdin --ttl 1h --expire-after-reveal --origin ${origin}`,
+      status: "zkr status --link-stdin",
+      receive: "zkr receive --link-stdin --output ./secret",
+      receiveStdout: "zkr receive --link-stdin --stdout --allow-plaintext-stdout"
+    },
+    skill: "Secret bytes must never appear in command arguments, logs, or chat transcripts. Prefer stdin and file output. Plaintext stdout requires an explicit acknowledgement."
+  };
+}
+
+function wantsHomeAgentGuide(accept) {
+  const value = (accept || "").toLowerCase();
+  if (value.includes("application/json")) return "json";
+  if (value.includes("text/html") && !value.includes("text/markdown")) return "html";
+  if (value.includes("text/markdown") || !value.includes("text/html")) return "markdown";
+  return "html";
+}
+
 async function agentPreflight(request, env, id) {
   const statusResponse = await secureObjectResponse(objectFetch(env, id, "/internal/status"));
   let status;
@@ -311,7 +430,7 @@ async function agentPreflight(request, env, id) {
   }
   const origin = new URL(request.url).origin;
   const tools = receiverInfo(request, env);
-  const accept = request.headers.get("accept") || "*/*";
+  const accept = (request.headers.get("accept") || "*/*").toLowerCase();
   if (accept.includes("application/json")) return json(agentManifest(origin, status, tools));
   if (accept.includes("text/html") && !accept.includes("text/markdown")) {
     return response(agentHtml(origin, status, tools), 200, { "content-type": "text/html; charset=utf-8" });
@@ -323,7 +442,17 @@ export async function handleRequest(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
 
-  if (request.method === "GET" && (path === "/" || /^\/h\/[A-Za-z0-9_-]+$/.test(path))) return serveShell(request, env);
+  if (request.method === "GET" && path === "/") {
+    const mode = wantsHomeAgentGuide(request.headers.get("accept"));
+    if (mode === "json") return json(homeAgentManifest(url.origin, receiverInfo(request, env)));
+    if (mode === "markdown") {
+      return response(homeAgentMarkdown(url.origin, receiverInfo(request, env)), 200, {
+        "content-type": "text/markdown; charset=utf-8"
+      });
+    }
+    return serveShell(request, env);
+  }
+  if (request.method === "GET" && /^\/h\/[A-Za-z0-9_-]+$/.test(path)) return serveShell(request, env);
 
   const agentMatch = /^\/a\/([A-Za-z0-9_-]+)$/.exec(path);
   if (request.method === "GET" && agentMatch) {
@@ -332,7 +461,6 @@ export async function handleRequest(request, env) {
   }
 
   if (request.method === "POST" && path === "/api/v1/secrets") {
-    if (!takeCreationSlot()) return json({ error: "temporarily_unavailable" }, 429);
     const declaredLength = Number(request.headers.get("content-length") || 0);
     if (Number.isFinite(declaredLength) && declaredLength > 2_000_000) return json({ error: "invalid_request" }, 413);
     let payload;
@@ -342,6 +470,7 @@ export async function handleRequest(request, env) {
       return json({ error: "invalid_request" }, 400);
     }
     if (!isValidCreateRequest(payload)) return json({ error: "invalid_request" }, 400);
+    if (!takeCreationSlot()) return json({ error: "temporarily_unavailable" }, 429);
     const id = bytesToBase64Url(randomBytes(16));
     const upstream = await secureObjectResponse(objectFetch(env, id, "/internal/create", {
       method: "POST",

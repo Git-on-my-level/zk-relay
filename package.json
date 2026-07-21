@@ -11,7 +11,7 @@
   "scripts": {
     "check": "node --check src/worker.js && node --check src/secret-object.js && node --check public/protocol.js && node --check public/crypto.js && node --check public/app.js",
     "test:js": "node --test tests/*.test.js",
-    "test:go": "GOCACHE=${GOCACHE:-/tmp/zk-relay-go-cache} go test ./...",
+    "test:go": "env -u GOROOT GOCACHE=${GOCACHE:-/tmp/zk-relay-go-cache} go test ./...",
     "test": "npm run test:js && npm run test:go",
     "dev": "npx --yes wrangler@4.41.0 dev",
     "deploy": "npx --yes wrangler@4.41.0 deploy"
