@@ -12,18 +12,30 @@ const elements = {
   secretInput: el("secret-input"),
   secretVisibility: el("secret-visibility"),
   secretState: el("secret-state"),
+  secretCount: el("secret-count"),
   fileInput: el("file-input"),
   attachFile: el("attach-file"),
+  fileChip: el("file-chip"),
   fileStatus: el("file-status"),
+  fileSize: el("file-size"),
+  fileRemove: el("file-remove"),
   expireAfterReveal: el("expire-after-reveal"),
   expireLabel: el("expire-label"),
+  expireHint: el("expire-hint"),
+  ledgerReveal: el("ledger-reveal"),
+  ledgerExpiry: el("ledger-expiry"),
   createLinks: el("create-links"),
   creationError: el("creation-error"),
   humanLink: el("human-link"),
   agentLink: el("agent-link"),
   expiryStatus: el("expiry-status"),
-  toast: el("toast"),
+  shareRevealStatus: el("share-reveal-status"),
+  shareAnother: el("share-another"),
+  copyStatus: el("copy-status"),
   humanExplanation: el("human-explanation"),
+  humanNotice: el("human-notice"),
+  humanNoticeText: el("human-notice-text"),
+  spentNote: el("spent-note"),
   revealSecret: el("reveal-secret"),
   humanError: el("human-error"),
   humanResult: el("human-result"),
@@ -44,7 +56,6 @@ let humanExpireAfterReveal = true;
 let revealedText = "";
 let resultIsVisible = false;
 let downloadUrl = null;
-let toastTimer = null;
 let maskedComposition = null;
 
 function setAccentColor() {
@@ -52,15 +63,20 @@ function setAccentColor() {
   if (/^#[0-9a-f]{6}$/i.test(color || "")) document.documentElement.style.setProperty("--green", color);
 }
 
-function showToast(message) {
-  elements.toast.textContent = message;
-  elements.toast.classList.add("is-visible");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => elements.toast.classList.remove("is-visible"), 2200);
-}
-
 function maskValue(value) {
   return value.replace(/[^\n]/g, "•");
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function updateSecretCount() {
+  const count = secretText.length;
+  elements.secretCount.textContent = count === 0 ? "empty" : `${count} character${count === 1 ? "" : "s"}`;
+  elements.secretCount.classList.toggle("is-live", count > 0);
 }
 
 function setSecretInput(value, selectionStart = null) {
@@ -78,6 +94,7 @@ function setSecretInput(value, selectionStart = null) {
   if (selectionStart !== null) {
     elements.secretInput.setSelectionRange(selectionStart, selectionStart);
   }
+  updateSecretCount();
   updateCreateButton();
 }
 
@@ -166,14 +183,33 @@ function setDuration(seconds) {
     button.classList.toggle("is-selected", selected);
     button.setAttribute("aria-pressed", String(selected));
   });
+  elements.ledgerExpiry.textContent = `Expires in ${formatDuration(seconds)}`;
 }
 
 async function attachFile() {
   elements.fileInput.click();
 }
 
-async function chooseFile() {
-  const file = elements.fileInput.files?.[0];
+function showFileChip(file) {
+  selectedFile = file;
+  elements.fileStatus.textContent = file.name;
+  elements.fileSize.textContent = formatBytes(file.size);
+  elements.fileChip.hidden = false;
+  elements.attachFile.hidden = true;
+  updateCreateButton();
+}
+
+function clearFile() {
+  selectedFile = null;
+  elements.fileInput.value = "";
+  elements.fileStatus.textContent = "";
+  elements.fileSize.textContent = "";
+  elements.fileChip.hidden = true;
+  elements.attachFile.hidden = false;
+  updateCreateButton();
+}
+
+function acceptFile(file) {
   if (!file) return;
   const textBytes = textEncoder.encode(secretText).length;
   if (file.size + textBytes > MAX_PAYLOAD_BYTES) {
@@ -181,10 +217,34 @@ async function chooseFile() {
     elements.fileInput.value = "";
     return;
   }
-  selectedFile = file;
   elements.creationError.textContent = "";
-  elements.fileStatus.textContent = file.name;
-  updateCreateButton();
+  showFileChip(file);
+}
+
+async function chooseFile() {
+  acceptFile(elements.fileInput.files?.[0]);
+}
+
+function bindDropTarget() {
+  const zone = elements.secretInput;
+  const wrap = elements.creationForm;
+  let depth = 0;
+  zone.addEventListener("dragover", (event) => event.preventDefault());
+  zone.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    depth += 1;
+    wrap.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragleave", () => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) wrap.classList.remove("is-dragging");
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    depth = 0;
+    wrap.classList.remove("is-dragging");
+    acceptFile(event.dataTransfer?.files?.[0]);
+  });
 }
 
 async function createLinks(event) {
@@ -192,7 +252,8 @@ async function createLinks(event) {
   if (!selectedFile && !secretText.length) return;
   elements.creationError.textContent = "";
   elements.createLinks.disabled = true;
-  elements.createLinks.querySelector("span").textContent = "Creating secure links";
+  elements.createLinks.querySelector("span").textContent = "Encrypting…";
+  elements.createLinks.classList.add("is-working");
 
   const wipe = [];
   let envelope;
@@ -254,12 +315,11 @@ async function createLinks(event) {
       button.setAttribute("aria-label", `Show ${label}`);
     });
     elements.expiryStatus.textContent = `Expires in ${formatDuration(selectedDuration)}`;
+    setRevealLedger(elements.shareRevealStatus, elements.expireAfterReveal.checked);
     elements.creationView.hidden = true;
     elements.shareView.hidden = false;
     secretText = "";
-    selectedFile = null;
-    elements.fileInput.value = "";
-    elements.fileStatus.textContent = "";
+    clearFile();
     setSecretInput("");
   } catch (error) {
     elements.creationError.textContent = error instanceof Error ? error.message : "The secure links could not be created. Please try again.";
@@ -267,8 +327,19 @@ async function createLinks(event) {
     if (key) key.fill(0);
     if (token) token.fill(0);
     elements.createLinks.querySelector("span").textContent = "Create secure links";
+    elements.createLinks.classList.remove("is-working");
     updateCreateButton();
   }
+}
+
+function shareAnother() {
+  elements.humanLink.value = "";
+  elements.agentLink.value = "";
+  elements.humanLink.type = "password";
+  elements.agentLink.type = "password";
+  elements.creationError.textContent = "";
+  activateCreationView();
+  elements.secretInput.focus();
 }
 
 function toggleLinkVisibility(button) {
@@ -297,24 +368,46 @@ function flashCopied(button) {
   }, 1500);
 }
 
+// Copy feedback lives on the button itself (the icon becomes a check). Only a
+// failed copy needs words, and those go inline in whichever view is showing.
+function copyFallbackTarget() {
+  return elements.humanView.hidden ? elements.copyStatus : elements.humanError;
+}
+
 async function copyValue(value, input, button = null, revealForFallback = null) {
+  const status = copyFallbackTarget();
   try {
     await navigator.clipboard.writeText(value);
+    status.textContent = "";
     flashCopied(button);
-    showToast("Copied");
   } catch {
     if (revealForFallback) revealForFallback();
     else input.type = "text";
     input.focus();
     input.select();
-    showToast("Copy the selected value.");
+    status.textContent = "This browser blocked the clipboard. The value is selected — copy it manually.";
   }
 }
 
 function syncExpireLabel() {
-  elements.expireLabel.textContent = elements.expireAfterReveal.checked
-    ? "Expire on: Secret expires after being revealed"
-    : "Expire off: Secret can be revealed many times";
+  const once = elements.expireAfterReveal.checked;
+  elements.expireLabel.textContent = once
+    ? "Expire on: Secret expires after being retrieved"
+    : "Expire off: Secret can be retrieved many times";
+  elements.expireHint.textContent = once
+    ? "The first person to retrieve it is the only one. After that the link is dead."
+    : "Anyone with the link can retrieve it repeatedly until it expires.";
+  setRevealLedger(elements.ledgerReveal, once);
+}
+
+// The ledger states the live plan for this secret, so its icon has to track
+// the toggle: a one-shot flame, or a repeatable cycle.
+function setRevealLedger(target, once) {
+  target.textContent = once ? "Opens once" : "Opens many times";
+  const icon = target.parentElement.querySelector("svg");
+  if (!icon) return;
+  icon.classList.toggle("ink-amber", once);
+  icon.querySelector("use")?.setAttribute("href", once ? "/icons.svg#flame" : "/icons.svg#repeat");
 }
 
 function setResultText(value) {
@@ -341,6 +434,8 @@ function unsealResult() {
   elements.resultField.classList.remove("is-sealed");
   elements.revealedText.disabled = false;
   elements.resultActions.hidden = false;
+  elements.resultField.classList.add("is-revealing");
+  setTimeout(() => elements.resultField.classList.remove("is-revealing"), 600);
 }
 
 function clearDownload() {
@@ -367,15 +462,17 @@ async function loadHumanStatus(id) {
     if (!result.ok || status.state !== "available") throw new Error("The secret is no longer available.");
     humanExpireAfterReveal = Boolean(status.expireAfterReveal);
     elements.humanExplanation.textContent = humanExpireAfterReveal
-      ? "You can look at this page safely. Revealing the secret will make the link stop working."
+      ? "You can look at this page safely. Retrieving the secret will make the link stop working."
       : "You can look at this page safely. This link works until it expires.";
+    elements.humanNotice.hidden = !humanExpireAfterReveal;
     if (capability) {
       elements.revealSecret.hidden = false;
       elements.revealSecret.disabled = false;
-      elements.revealSecret.textContent = "Reveal secret";
+      elements.revealSecret.querySelector("span").textContent = "Retrieve secret";
     }
   } catch (error) {
     elements.humanError.textContent = error instanceof Error ? error.message : "The secret is no longer available.";
+    elements.humanNotice.hidden = true;
   }
 }
 
@@ -393,7 +490,8 @@ function offerDownload(name, mediaType, bytes) {
 async function revealHumanSecret(id) {
   if (!capability) return;
   elements.revealSecret.disabled = true;
-  elements.revealSecret.textContent = "Revealing…";
+  elements.revealSecret.querySelector("span").textContent = "Decrypting…";
+  elements.revealSecret.classList.add("is-working");
   elements.humanError.textContent = "";
   try {
     const result = await fetch(`/api/v1/secrets/${encodeURIComponent(id)}/reveal`, {
@@ -431,12 +529,16 @@ async function revealHumanSecret(id) {
     }
     envelope.bytes.fill(0);
     elements.revealSecret.hidden = true;
+    elements.revealSecret.classList.remove("is-working");
+    elements.humanNotice.hidden = true;
+    elements.spentNote.hidden = !humanExpireAfterReveal;
     if (humanExpireAfterReveal) wipeCapability();
   } catch (error) {
-    elements.humanError.textContent = error instanceof Error ? error.message : "The secret could not be revealed.";
+    elements.humanError.textContent = error instanceof Error ? error.message : "The secret could not be retrieved.";
+    elements.revealSecret.classList.remove("is-working");
     if (capability) {
       elements.revealSecret.disabled = false;
-      elements.revealSecret.textContent = "Reveal secret";
+      elements.revealSecret.querySelector("span").textContent = "Retrieve secret";
     }
   }
 }
@@ -452,7 +554,7 @@ function setupHumanRoute() {
     capability = decodeCapabilityFragment(window.location.hash);
     history.replaceState(null, "", window.location.pathname);
   } catch {
-    elements.humanError.textContent = "This page needs the original complete link to reveal the secret.";
+    elements.humanError.textContent = "This page needs the original complete link to retrieve the secret.";
   }
   loadHumanStatus(match[1]);
   elements.revealSecret.addEventListener("click", () => revealHumanSecret(match[1]));
@@ -511,6 +613,10 @@ function initialize() {
   });
   elements.attachFile.addEventListener("click", attachFile);
   elements.fileInput.addEventListener("change", chooseFile);
+  elements.fileRemove.addEventListener("click", clearFile);
+  elements.shareAnother.addEventListener("click", shareAnother);
+  bindDropTarget();
+  setDuration(selectedDuration);
   document.querySelectorAll(".duration-option").forEach((button) => button.addEventListener("click", () => setDuration(Number(button.dataset.seconds))));
   elements.creationForm.addEventListener("submit", createLinks);
   document.querySelectorAll(".link-visibility").forEach((button) => button.addEventListener("click", () => toggleLinkVisibility(button)));

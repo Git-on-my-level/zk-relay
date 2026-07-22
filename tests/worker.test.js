@@ -191,11 +191,13 @@ test("static UI preserves locked labels and never renders secrets with innerHTML
     "Your secret is ready",
     "Human friendly link",
     "Agent friendly link",
-    "Expire on: Secret expires after being revealed",
-    "Encrypted on device"
+    "Expire on: Secret expires after being retrieved",
+    "Encrypted on device",
+    "Share a secret",
+    "Retrieve secret"
   ]) assert.match(html, new RegExp(copy));
   assert.match(html, /id="expire-after-reveal" type="checkbox" checked/);
-  assert.match(app, /Expire off: Secret can be revealed many times/);
+  assert.match(app, /Expire off: Secret can be retrieved many times/);
   assert.match(html, /id="human-link" type="password" readonly/);
   assert.match(html, /id="agent-link" type="password" readonly/);
   assert.match(html, /result-field is-sealed/);

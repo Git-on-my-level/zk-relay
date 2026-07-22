@@ -39,7 +39,7 @@ zkr status --link-stdin
 
 ## Humans
 
-Open the human link, read the warning, choose Reveal secret. Decryption happens in the browser.
+Open the human link, read the warning, choose Retrieve secret. Decryption happens in the browser.
 
 ## Docs
 

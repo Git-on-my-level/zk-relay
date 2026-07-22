@@ -18,128 +18,199 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body data-app-name="__ZK_RELAY_APP_NAME__" data-accent-color="__ZK_RELAY_ACCENT_COLOR__">
-    <aside class="identity-rail" aria-label="__ZK_RELAY_APP_NAME__">
-      <a class="brand" href="/" aria-label="__ZK_RELAY_APP_NAME__ home">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span data-brand-name>__ZK_RELAY_APP_NAME__</span>
-      </a>
-      <footer class="site-footer site-footer--rail">
-        <p>Made with love and tokens by David Zhang</p>
-        <p><a href="https://github.com/Git-on-my-level/zk-relay" rel="noopener noreferrer">Open source on GitHub</a></p>
-      </footer>
-    </aside>
-
-    <header class="mobile-bar">
-      <a class="brand" href="/" aria-label="__ZK_RELAY_APP_NAME__ home">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span data-brand-name>__ZK_RELAY_APP_NAME__</span>
-      </a>
+    <header class="site-head">
+      <div class="site-head-inner">
+        <a class="brand" href="/" aria-label="__ZK_RELAY_APP_NAME__ home">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span data-brand-name>__ZK_RELAY_APP_NAME__</span>
+        </a>
+      </div>
     </header>
 
     <main class="page-main">
       <section id="creation-view" class="view" aria-labelledby="create-heading">
-        <h1 id="create-heading">Share a secret with a human or an agent</h1>
+        <h1 id="create-heading">
+          <span class="heading-full">Share a secret with a human or an agent</span>
+          <span class="heading-short">Share a secret</span>
+        </h1>
+
         <form id="creation-form" novalidate>
-          <div class="secret-field">
-            <label class="field-label" for="secret-input">Your secret</label>
-            <div class="secret-input-wrap">
-              <textarea id="secret-input" name="secret" rows="4" spellcheck="false" autocomplete="off" aria-describedby="secret-state"></textarea>
-              <button id="secret-visibility" class="text-action" type="button" aria-pressed="false">Show</button>
+          <div class="card stagger">
+            <div class="card-body">
+              <div class="secret-field">
+                <div class="field-head">
+                  <label class="field-label" for="secret-input">Your secret</label>
+                  <span class="field-tools">
+                    <span id="secret-count" class="char-count" aria-hidden="true">empty</span>
+                    <button id="secret-visibility" class="text-action" type="button" aria-pressed="false">Show</button>
+                  </span>
+                </div>
+                <div class="secret-input-wrap">
+                  <textarea id="secret-input" name="secret" rows="3" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off" aria-describedby="secret-state" placeholder="Paste a token or password"></textarea>
+                </div>
+                <span id="secret-state" class="sr-only">Secret is hidden. Use Show to reveal it.</span>
+
+                <input id="file-input" type="file" hidden>
+                <div class="attach-row">
+                  <button id="attach-file" class="attach-action" type="button">
+                    <svg aria-hidden="true"><use href="/icons.svg#attachment"></use></svg>
+                    <span>Attach a file</span>
+                  </button>
+                  <span class="attach-hint">or drop one on the box above</span>
+                  <span id="file-chip" class="file-chip" hidden>
+                    <svg aria-hidden="true"><use href="/icons.svg#attachment"></use></svg>
+                    <span id="file-status" class="file-status"></span>
+                    <span id="file-size" class="file-size"></span>
+                    <button id="file-remove" class="chip-remove" type="button" aria-label="Remove attached file">
+                      <svg aria-hidden="true"><use href="/icons.svg#close"></use></svg>
+                    </button>
+                  </span>
+                </div>
+              </div>
             </div>
-            <span id="secret-state" class="sr-only">Secret is hidden. Use Show to reveal it.</span>
+
+            <div class="card-body card-split">
+              <fieldset class="duration-fieldset">
+                <legend class="field-label">Keep it available for</legend>
+                <div class="duration-options" role="group" aria-label="Keep it available for">
+                  <button type="button" class="duration-option is-selected" data-seconds="3600" aria-pressed="true">1 hour</button>
+                  <button type="button" class="duration-option" data-seconds="86400" aria-pressed="false">1 day</button>
+                  <button type="button" class="duration-option" data-seconds="604800" aria-pressed="false">7 days</button>
+                </div>
+              </fieldset>
+            </div>
+
+            <label class="switch-row card-split">
+              <input id="expire-after-reveal" type="checkbox" checked>
+              <span class="switch-ui" aria-hidden="true"></span>
+              <span class="switch-copy">
+                <strong id="expire-label">Expire on: Secret expires after being retrieved</strong>
+                <span id="expire-hint" class="switch-hint">The first person to retrieve it is the only one. After that the link is dead.</span>
+              </span>
+            </label>
           </div>
 
-          <input id="file-input" type="file" hidden>
-          <button id="attach-file" class="attach-action" type="button">
-            <svg aria-hidden="true"><use href="/icons.svg#attachment"></use></svg>
-            <span>Attach a file</span>
-          </button>
-          <p id="file-status" class="file-status" aria-live="polite"></p>
-
-          <fieldset class="duration-fieldset">
-            <legend class="field-label">Keep it available for</legend>
-            <div class="duration-options" role="group" aria-label="Keep it available for">
-              <button type="button" class="duration-option is-selected" data-seconds="3600" aria-pressed="true">1 hour</button>
-              <button type="button" class="duration-option" data-seconds="86400" aria-pressed="false">1 day</button>
-              <button type="button" class="duration-option" data-seconds="604800" aria-pressed="false">7 days</button>
-            </div>
-          </fieldset>
-
-          <label class="switch-row">
-            <input id="expire-after-reveal" type="checkbox" checked>
-            <span class="switch-ui" aria-hidden="true"></span>
-            <span id="expire-label">Expire on: Secret expires after being revealed</span>
-          </label>
+          <ul class="ledger" aria-label="What happens when you create these links">
+            <li><svg class="ink-green" aria-hidden="true"><use href="/icons.svg#lock"></use></svg><span>Encrypted on device</span></li>
+            <li><svg class="ink-amber" aria-hidden="true"><use href="/icons.svg#flame"></use></svg><span id="ledger-reveal">Opens once</span></li>
+            <li><svg aria-hidden="true"><use href="/icons.svg#clock"></use></svg><span id="ledger-expiry">Expires in 1 hour</span></li>
+          </ul>
 
           <button id="create-links" class="primary-action" type="submit" disabled>
             <span>Create secure links</span>
             <svg aria-hidden="true"><use href="/icons.svg#arrow"></use></svg>
           </button>
-          <p class="reassurance"><svg aria-hidden="true"><use href="/icons.svg#lock"></use></svg><span>Encrypted on device</span></p>
           <p id="creation-error" class="form-error" role="alert"></p>
         </form>
       </section>
 
       <section id="share-view" class="view" hidden aria-labelledby="share-heading">
         <h1 id="share-heading">Your secret is ready</h1>
-        <div class="link-section">
-          <h2>Human friendly link</h2>
-          <div class="link-field">
-            <input id="human-link" type="password" readonly aria-label="Human friendly link">
-            <div class="link-actions">
-              <button class="icon-button link-visibility" type="button" data-target="human-link" aria-label="Show human friendly link">
-                <svg aria-hidden="true"><use href="/icons.svg#eye-off"></use></svg>
-              </button>
-              <button class="icon-button copy-link" type="button" data-target="human-link" aria-label="Copy human friendly link">
-                <svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg>
-              </button>
+        <p class="deck">Two links to the same secret. Send whichever one fits the recipient — you do not need to send both.</p>
+
+        <div class="stagger">
+          <div class="link-section card">
+            <div class="card-body">
+              <div class="link-head">
+                <svg aria-hidden="true"><use href="/icons.svg#person"></use></svg>
+                <h2>Human friendly link</h2>
+              </div>
+              <p class="link-note">Opens a page where they choose to retrieve. Nothing is decrypted until they click.</p>
+              <div class="link-field">
+                <input id="human-link" type="password" readonly aria-label="Human friendly link">
+                <div class="link-actions">
+                  <button class="icon-button link-visibility" type="button" data-target="human-link" aria-label="Show human friendly link">
+                    <svg aria-hidden="true"><use href="/icons.svg#eye-off"></use></svg>
+                  </button>
+                  <button class="icon-button copy-link" type="button" data-target="human-link" aria-label="Copy human friendly link">
+                    <svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="link-section card">
+            <div class="card-body">
+              <div class="link-head">
+                <svg aria-hidden="true"><use href="/icons.svg#terminal"></use></svg>
+                <h2>Agent friendly link</h2>
+              </div>
+              <p class="link-note">Safe to hand to a tool-using agent. Fetching it returns instructions, never the ciphertext, so the secret stays out of the transcript.</p>
+              <div class="link-field">
+                <input id="agent-link" type="password" readonly aria-label="Agent friendly link">
+                <div class="link-actions">
+                  <button class="icon-button link-visibility" type="button" data-target="agent-link" aria-label="Show agent friendly link">
+                    <svg aria-hidden="true"><use href="/icons.svg#eye-off"></use></svg>
+                  </button>
+                  <button class="icon-button copy-link" type="button" data-target="agent-link" aria-label="Copy agent friendly link">
+                    <svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg>
+                  </button>
+                </div>
+              </div>
+              <p class="run-hint">
+                <span>They run</span>
+                <code>zkr receive &lt;link&gt; --output ./secret</code>
+              </p>
             </div>
           </div>
         </div>
-        <div class="link-section">
-          <h2>Agent friendly link</h2>
-          <div class="link-field">
-            <input id="agent-link" type="password" readonly aria-label="Agent friendly link">
-            <div class="link-actions">
-              <button class="icon-button link-visibility" type="button" data-target="agent-link" aria-label="Show agent friendly link">
-                <svg aria-hidden="true"><use href="/icons.svg#eye-off"></use></svg>
-              </button>
-              <button class="icon-button copy-link" type="button" data-target="agent-link" aria-label="Copy agent friendly link">
-                <svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="share-status">
-          <p><svg class="status-amber" aria-hidden="true"><use href="/icons.svg#clock"></use></svg><span id="expiry-status">Expires in 1 hour</span></p>
-          <p><svg aria-hidden="true"><use href="/icons.svg#lock"></use></svg><span>Encrypted on device</span></p>
-        </div>
+
+        <p id="copy-status" class="form-error" role="alert"></p>
+
+        <ul class="ledger share-status" aria-label="Secret status">
+          <li><svg class="ink-green" aria-hidden="true"><use href="/icons.svg#lock"></use></svg><span>Encrypted on device</span></li>
+          <li><svg class="ink-amber" aria-hidden="true"><use href="/icons.svg#flame"></use></svg><span id="share-reveal-status">Opens once</span></li>
+          <li><svg aria-hidden="true"><use href="/icons.svg#clock"></use></svg><span id="expiry-status">Expires in 1 hour</span></li>
+        </ul>
+
+        <button id="share-another" class="ghost-action" type="button">
+          <svg aria-hidden="true"><use href="/icons.svg#back"></use></svg>
+          <span>Share another secret</span>
+        </button>
       </section>
 
       <section id="human-view" class="view human-view" hidden aria-labelledby="human-heading">
         <h1 id="human-heading">Someone shared a secret with you</h1>
         <p id="human-explanation" class="human-copy"></p>
+
+        <div id="human-notice" class="notice" hidden>
+          <svg aria-hidden="true"><use href="/icons.svg#flame"></use></svg>
+          <span id="human-notice-text">Retrieving this secret uses it up. Have somewhere to put it before you click.</span>
+        </div>
+
         <div id="human-result">
           <label class="field-label" for="revealed-text">Secret</label>
           <div class="result-field is-sealed" id="result-field">
-            <textarea id="revealed-text" rows="5" readonly aria-label="Revealed secret" disabled></textarea>
+            <textarea id="revealed-text" rows="3" readonly aria-label="Retrieved secret" disabled></textarea>
+            <div class="seal-veil" aria-hidden="true">7f2a·c4e1·9b03·d85f·216c
+a09d·3e7b·f142·8cd6·5a3e
+b31f·88a4·02de·6f97·c15b
+4e6d·1c72·ab59·30f8·e274</div>
             <div class="result-actions" id="result-actions" hidden>
               <button id="result-visibility" class="text-action" type="button" aria-pressed="false">Show</button>
-              <button id="result-copy" class="icon-button" type="button" aria-label="Copy revealed secret"><svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg></button>
+              <button id="result-copy" class="icon-button" type="button" aria-label="Copy retrieved secret"><svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg></button>
             </div>
           </div>
         </div>
-        <button id="reveal-secret" class="primary-action" type="button" disabled>Reveal secret</button>
+
+        <button id="reveal-secret" class="primary-action" type="button" disabled>
+          <span>Retrieve secret</span>
+          <svg aria-hidden="true"><use href="/icons.svg#arrow"></use></svg>
+        </button>
         <p id="human-error" class="form-error" role="alert"></p>
         <a id="file-download" class="download-action" hidden>Download file</a>
+        <p id="spent-note" class="spent-note" hidden>
+          <svg aria-hidden="true"><use href="/icons.svg#flame"></use></svg>
+          <span>This link is spent. Copy the secret now — it cannot be opened again.</span>
+        </p>
       </section>
     </main>
 
-    <footer class="site-footer site-footer--page">
+    <footer class="site-footer">
       <p>Made with love and tokens by David Zhang · <a href="https://github.com/Git-on-my-level/zk-relay" rel="noopener noreferrer">Open source on GitHub</a></p>
     </footer>
 
-    <output id="toast" class="toast" aria-live="polite"></output>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
