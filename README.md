@@ -110,13 +110,28 @@ Set an actual HTTPS release base and all five checksums before making the agent 
 
 ## Publishing the CLI
 
-Build and GPG-sign the dependency-free Go CLI (`create`, `status`, `receive`):
+Agents shipping a release follow [AGENTS.md](AGENTS.md). Build and GPG-sign the dependency-free Go CLI (`create`, `status`, `receive`):
 
 ```sh
 ./scripts/build-tools.sh v1.2.1
 ```
 
 This produces untracked artifacts under `dist/tools/v1.2.1/` (`zkr-*`, `checksums.txt`, `SHA256SUMS`, and `SHA256SUMS.asc` when `gpg` is available). Upload those files to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, publish the matching public key (see `public/zk-relay-releases.txt`), then set every `TOOL_SHA256_*` value and `TOOL_GPG_FINGERPRINT` in `wrangler.jsonc`. Binaries are not committed.
+
+On a Mac, that script signs both darwin binaries with the Developer ID Application certificate in the login keychain and notarizes them before it writes checksums. Gatekeeper then accepts a browser download while the Mac is online. The ticket cannot be stapled to a raw binary, so the first launch needs network; a signed `.pkg` is the offline alternative. `ZKR_SKIP_APPLE_SIGN=1` leaves the darwin binaries linker-signed.
+
+One-time Apple setup, then later releases stay `./scripts/build-tools.sh vX.Y.Z` on this Mac:
+
+1. In [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/certificates/list), create a **Developer ID Application** certificate and choose **G2 Sub-CA**. Certificates from the previous Sub-CA expire 1 February 2027 and cannot sign new releases after that.
+2. When both generations are in the keychain, the script signs with the G2 certificate. Set `ZKR_CODESIGN_IDENTITY` to a hash from `security find-identity -v -p codesigning` to override it.
+3. Create an app-specific password at appleid.apple.com, then store it once:
+
+```sh
+xcrun notarytool store-credentials "zkr-notary" \
+  --team-id JVMXE5G542 --apple-id YOUR_APPLE_ID
+```
+
+Checksums and the GPG signature are taken from the signed bytes. Notarization does not change those bytes. The GitHub Release workflow runs on Linux, so it GPG-signs checksums and does not Apple-sign. Publish the macOS binaries from the Mac build.
 
 Tagged releases can be built in CI: push a `v*` tag and the Release workflow builds, signs with the `ZK_RELAY_GPG_PRIVATE_KEY` secret, and attaches artifacts to the GitHub Release.
 

@@ -29,4 +29,5 @@ Garbage-collected browser JavaScript cannot promise perfect memory erasure. ZK R
 - Build and verify receiver releases independently; never instruct users to pipe an unverified download into a shell.
 - Prefer GPG-verified `SHA256SUMS.asc` (fingerprint in `TOOL_GPG_FINGERPRINT`) over trusting a bare download URL.
 - Keep Cloudflare dashboard access tightly controlled.
-- Store the release signing private key only in GitHub Actions secrets (or an equivalent HSM/secret store), never in the repository.
+- Store the GPG release signing private key only in GitHub Actions secrets (or an equivalent HSM/secret store), never in the repository.
+- Apple Developer ID signing stays in the maintainer Mac login keychain (`zkr-notary`). Do not commit a `.p12`, an App Store Connect key, or the notary password, and do not move that certificate into GitHub Actions.
