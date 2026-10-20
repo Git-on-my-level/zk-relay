@@ -193,6 +193,8 @@ h1 + .card, h1 + form, h1 + .stagger { margin-top: 1.5rem; }
   transition: color .2s;
 }
 .char-count.is-live { color: var(--ink-2); }
+.char-count.is-warning { color: var(--amber); }
+.char-count.is-over { color: var(--danger); font-weight: 620; }
 
 .secret-input-wrap { position: relative; }
 textarea {
@@ -300,6 +302,9 @@ textarea:focus {
 }
 .chip-remove svg { width: .8rem; height: .8rem; color: currentColor; }
 .chip-remove:hover { background: color-mix(in oklab, var(--ink) 8%, transparent); color: var(--ink); }
+
+.form-note { margin: .5rem 0 0; color: var(--muted); font-size: .75rem; line-height: 1.45; }
+.form-note:empty { display: none; }
 
 /* ── duration segmented control ──────────────────────────── */
 .duration-fieldset { margin: 0; padding: 0; border: 0; }
@@ -647,6 +652,34 @@ textarea:focus {
   margin-top: 1.15rem;
   color: var(--on-accent);
   text-decoration: none;
+}
+/* image previews start veiled, like masked text, until the reader asks */
+.image-preview { margin: 1.15rem 0 0; }
+.image-frame {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--sunken);
+  animation: rise .35s var(--ease) both;
+}
+.image-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: 28rem;
+  margin: 0 auto;
+  object-fit: contain;
+  transition: filter .3s var(--ease);
+}
+.image-frame.is-veiled img { filter: blur(18px) saturate(.6); }
+.image-frame .text-action {
+  position: absolute;
+  right: .4rem;
+  bottom: .4rem;
+  height: 2rem;
+  padding: 0 .55rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-pill);
 }
 .spent-note {
   display: flex;
