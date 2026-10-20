@@ -24,7 +24,7 @@ build_target() {
   goos="$1"
   goarch="$2"
   filename="$3"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags='-s -w' -o "$output_dir/$filename" ./cmd/zkr
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w -X main.version=$tool_version" -o "$output_dir/$filename" ./cmd/zkr
 }
 
 build_target linux amd64 zkr-linux-amd64

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { decryptContainer, encryptEnvelope, makeBundleEnvelope, makeEnvelope } from "../public/crypto.js";
-import { AAD_TEXT, MAX_PAYLOAD_BYTES, base64UrlToBytes, bytesToBase64Url, decodeCapabilityFragment } from "../public/protocol.js";
+import { AAD_TEXT, MAX_BUNDLE_ITEMS, MAX_PAYLOAD_BYTES, base64UrlToBytes, bytesToBase64Url, decodeCapabilityFragment } from "../public/protocol.js";
 import { claimTransition, validateCreatePayload } from "../src/secret-object.js";
 
 const vector = JSON.parse(await readFile(new URL("../protocol/test-vectors.json", import.meta.url), "utf8"));
@@ -175,4 +175,17 @@ test("non-removing claim remains available until expiry", () => {
   assert.equal(claimTransition(record, vector.key).kind, "success");
   assert.equal(claimTransition(record, vector.key).kind, "success");
   assert.equal(claimTransition({ ...record, expires_at: Date.now() - 1 }, vector.key).kind, "unavailable");
+});
+
+test("bundles carry up to MAX_BUNDLE_ITEMS items", async () => {
+  const items = Array.from({ length: MAX_BUNDLE_ITEMS }, (_, index) => ({
+    kind: "file", name: `shot-${index}.png`, mediaType: "image/png", bytes: new Uint8Array([index])
+  }));
+  const encrypted = await encryptEnvelope(makeBundleEnvelope(items));
+  const decoded = await decryptContainer({
+    v: 1, ciphertext: bytesToBase64Url(encrypted.ciphertext), nonce: bytesToBase64Url(encrypted.nonce), aad: AAD_TEXT
+  }, encrypted.key);
+  assert.equal(decoded.items.length, MAX_BUNDLE_ITEMS);
+  assert.deepEqual(decoded.items.map((item) => item.bytes[0]), items.map((_, index) => index));
+  assert.throws(() => makeBundleEnvelope([...items, items[0]]), /1 to 16 items/);
 });

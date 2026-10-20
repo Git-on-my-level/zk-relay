@@ -4,6 +4,14 @@ export const MAX_PAYLOAD_BYTES = 1024 * 1024;
 // The encrypted envelope is kept below the Durable Object per-value limit.
 // A 1 MiB payload plus its JSON/base64 envelope fits comfortably within this.
 export const MAX_ENCRYPTED_CONTAINER_BYTES = 1_450_000;
+// A bundle holds at most this many text and file items.
+export const MAX_BUNDLE_ITEMS = 16;
+// Receiver levels. Level 1 reads text, file, and bundles of up to two items.
+// Level 2 also reads bundles of up to MAX_BUNDLE_ITEMS items. A sender marks a
+// secret with the level it needs so the server can refuse an older receiver
+// before a one-shot secret is used up.
+export const RECEIVER_LEVEL = 2;
+export const RECEIVER_LEVEL_HEADER = "zk-relay-receiver";
 export const ALLOWED_EXPIRIES = new Set([3600, 86400, 604800]);
 
 export function bytesToBase64Url(bytes) {

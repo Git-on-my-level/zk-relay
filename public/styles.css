@@ -245,7 +245,8 @@ textarea:focus {
 #secret-visibility { min-width: 3rem; height: 1.75rem; padding: 0 .5rem; }
 
 /* ── attach / file chip ──────────────────────────────────── */
-.attach-row { display: flex; align-items: center; gap: .6rem; margin-top: .75rem; min-height: 2rem; }
+.attach-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .6rem; margin-top: .75rem; min-height: 2rem; }
+.file-chips { display: contents; margin: 0; padding: 0; list-style: none; }
 .attach-action {
   display: inline-flex;
   align-items: center;
@@ -264,7 +265,7 @@ textarea:focus {
 .attach-action:hover svg { color: var(--accent); }
 .attach-hint { color: var(--muted); font-size: .75rem; }
 /* once a file is attached the chip is the whole story */
-.attach-row:has(#file-chip:not([hidden])) .attach-hint { display: none; }
+.attach-row:has(.file-chip) .attach-hint { display: none; }
 
 .file-chip {
   display: inline-flex;
@@ -653,8 +654,26 @@ textarea:focus {
   color: var(--on-accent);
   text-decoration: none;
 }
-/* image previews start veiled, like masked text, until the reader asks */
-.image-preview { margin: 1.15rem 0 0; }
+/* retrieved files: previews start veiled, like masked text */
+.file-results { display: grid; gap: .75rem; margin-top: 1.15rem; }
+.file-result { display: grid; gap: .5rem; }
+.human-view .file-results .download-action.primary-action { margin-top: 0; }
+.download-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .55rem .6rem .55rem .75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color .16s, background .16s;
+}
+.download-row:hover { border-color: var(--accent); background: var(--accent-quiet); }
+.download-row svg { flex: none; width: 1rem; height: 1rem; color: var(--accent); }
+.download-row .file-status { flex: 1; }
+.download-label { color: var(--accent); font-size: .8125rem; font-weight: 620; }
 .image-frame {
   position: relative;
   overflow: hidden;

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -475,4 +476,114 @@ func newStatusTestServer(t *testing.T, statusCode int, status safeStatus) *httpt
 		writer.WriteHeader(statusCode)
 		_ = json.NewEncoder(writer).Encode(status)
 	}))
+}
+
+func TestWriteBundleAcceptsManyItemsAndDeduplicatesNames(t *testing.T) {
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	temporary := t.TempDir()
+	if err := os.Chdir(temporary); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(original) })
+
+	items := []bundleItem{{Kind: "text", Name: "secret.txt", MediaType: "text/plain; charset=utf-8", Data: base64.RawURLEncoding.EncodeToString([]byte("note"))}}
+	for _, name := range []string{"shot.png", "shot.png", "Shot.png", "a:b", "a-b"} {
+		items = append(items, bundleItem{Kind: "file", Name: name, MediaType: "image/png", Data: base64.RawURLEncoding.EncodeToString([]byte(name))})
+	}
+	payload, err := json.Marshal(bundlePayload{Items: items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeBundle("out", payload, false); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{
+		"shot.png":     "shot.png",
+		"shot (2).png": "shot.png",
+		"Shot (3).png": "Shot.png",
+		"a-b":          "a:b",
+		"a-b (2)":      "a-b",
+	} {
+		got, err := os.ReadFile(filepath.Join("out", path))
+		if err != nil || string(got) != want {
+			t.Fatalf("%s = %q err=%v, want %q", path, got, err, want)
+		}
+	}
+}
+
+func TestDecodeBundleRejectsTooManyItems(t *testing.T) {
+	items := make([]bundleItem, maxBundleItems+1)
+	for index := range items {
+		items[index] = bundleItem{Kind: "file", Name: fmt.Sprintf("f%d", index), MediaType: "application/octet-stream", Data: ""}
+	}
+	payload, err := json.Marshal(bundlePayload{Items: items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := decodeBundleItems(payload); err == nil {
+		t.Fatal("bundle with too many items was accepted")
+	}
+}
+
+func TestReceiveStopsBeforeClaimWhenStatusNeedsNewerReceiver(t *testing.T) {
+	vector := loadVector(t)
+	claimed := false
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/reveal") {
+			claimed = true
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(safeStatus{V: 1, State: "available", ExpiresAt: "2030-01-01T00:00:00Z", ExpireAfterReveal: true, MinReceiver: receiverLevel + 1})
+	}))
+	defer server.Close()
+	chdirTemp(t)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"receive", server.URL + "/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key, "--output", "out"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 || claimed || !strings.Contains(stderr.String(), "needs a newer zkr") {
+		t.Fatalf("code=%d claimed=%v stderr=%q", code, claimed, stderr.String())
+	}
+}
+
+func TestReceiveSendsLevelAndReportsUpgradeRequired(t *testing.T) {
+	vector := loadVector(t)
+	var sentLevel string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(request.URL.Path, "/reveal") {
+			sentLevel = request.Header.Get(receiverLevelHeader)
+			writer.WriteHeader(http.StatusUpgradeRequired)
+			_, _ = writer.Write([]byte(`{"error":"receiver_upgrade_required","minReceiver":3}`))
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(safeStatus{V: 1, State: "available", ExpiresAt: "2030-01-01T00:00:00Z", ExpireAfterReveal: true})
+	}))
+	defer server.Close()
+	chdirTemp(t)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"receive", server.URL + "/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key, "--output", "out"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 1 || sentLevel != fmt.Sprint(receiverLevel) || !strings.Contains(stderr.String(), "needs a newer zkr") {
+		t.Fatalf("code=%d level=%q stderr=%q", code, sentLevel, stderr.String())
+	}
+}
+
+func TestVersionCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "receiver level 2") {
+		t.Fatalf("code=%d stdout=%q", code, stdout.String())
+	}
+}
+
+func chdirTemp(t *testing.T) {
+	t.Helper()
+	original, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(original) })
 }
