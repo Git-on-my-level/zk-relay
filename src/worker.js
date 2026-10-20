@@ -1,5 +1,5 @@
 import { SecretObject, validateCreatePayload } from "./secret-object.js";
-import { PROTOCOL_VERSION, bytesToBase64Url, randomBytes } from "../public/protocol.js";
+import { MAX_BUNDLE_ITEMS, PROTOCOL_VERSION, RECEIVER_LEVEL, RECEIVER_LEVEL_HEADER, bytesToBase64Url, randomBytes } from "../public/protocol.js";
 
 export { SecretObject };
 
@@ -142,7 +142,13 @@ function receiverContract(origin) {
     reveal: {
       method: "POST",
       path: "/api/v1/secrets/{id}/reveal",
-      accept: "application/vnd.zk-relay.encrypted+json"
+      accept: "application/vnd.zk-relay.encrypted+json",
+      receiver_level_header: `${RECEIVER_LEVEL_HEADER}: ${RECEIVER_LEVEL}`,
+      receiver_levels: {
+        1: "text, file, and bundles of 1-2 items",
+        2: `adds bundles of up to ${MAX_BUNDLE_ITEMS} items`
+      },
+      upgrade_required: "HTTP 426 with {error:'receiver_upgrade_required',minReceiver} when status.minReceiver exceeds the sent level. Nothing is consumed."
     },
     crypto: {
       algorithm: "AES-256-GCM",
@@ -166,7 +172,7 @@ function receiverContract(origin) {
     kind_behavior: {
       text: "Decode UTF-8 strictly. Display or copy only on explicit request. Optionally save as the sanitized name.",
       file: "Save raw bytes to a sanitized filename under a caller-selected directory. Never execute or auto-open. Report path, mediaType, byte count, and SHA-256.",
-      bundle: "Decode data as JSON {items:[...]} with 1-2 items. Each item is {kind,name,mediaType,data} only (no v). Handle each by kind. Preferred receiver writes into --output as a directory."
+      bundle: `Decode data as JSON {items:[...]} with 1-${MAX_BUNDLE_ITEMS} items. Each item is {kind,name,mediaType,data} only (no v). Handle each by kind. Preferred receiver writes into --output as a directory, de-duplicating sanitized names.`
     },
     file_safety: {
       max_payload_bytes: 1048576,
@@ -221,7 +227,7 @@ expires_at: ${expires}
 expires_after_reveal: ${Boolean(status.expireAfterReveal)}
 retrieved: false
 receiver_version: ${tools.version}
-receiver_contract: ${contract.receiver_contract}
+${status.minReceiver ? `min_receiver_level: ${status.minReceiver}\nmin_receiver_version: v1.3.0\n` : ""}receiver_contract: ${contract.receiver_contract}
 ---
 
 # Encrypted secret
@@ -231,7 +237,7 @@ This request did not retrieve the secret.
 ${available ? revealBehavior : "This link is no longer available."}
 
 ${available ? `It expires at ${expires}.` : ""}
-
+${status.minReceiver ? `\nThis secret holds several files and needs zkr v1.3.0 or later (receiver level ${status.minReceiver}). Older receivers are refused before anything is retrieved. Check with \`zkr version\`.\n` : ""}
 ## Preferred receiver
 
 The preferred receiver handles both text and file envelopes safely. It saves the decrypted value to a local file and does not print it.
@@ -286,6 +292,7 @@ export function agentManifest(origin, status, tools) {
     requestDidNotRetrieve: true,
     expiresAt: status.expiresAt || null,
     expireAfterReveal: Boolean(status.expireAfterReveal),
+    minReceiverLevel: status.minReceiver || 1,
     retrievalBehavior,
     retrieved: false,
     preferredCommand: "zkr receive \"$ZK_RELAY_URL\" --output ./secret",
@@ -488,11 +495,13 @@ export async function handleRequest(request, env) {
     if (!ID_PATTERN.test(id)) return json({ error: "unavailable" }, 404);
     if (action === "status" && request.method === "GET") return secureObjectResponse(objectFetch(env, id, "/internal/status"));
     if (action === "reveal" && request.method === "POST") {
-      const authorization = request.headers.get("authorization") || "";
-      return secureObjectResponse(objectFetch(env, id, "/internal/reveal", {
-        method: "POST",
-        headers: { authorization, accept: "application/vnd.zk-relay.encrypted+json" }
-      }));
+      const headers = {
+        authorization: request.headers.get("authorization") || "",
+        accept: "application/vnd.zk-relay.encrypted+json"
+      };
+      const level = request.headers.get(RECEIVER_LEVEL_HEADER);
+      if (level) headers[RECEIVER_LEVEL_HEADER] = level;
+      return secureObjectResponse(objectFetch(env, id, "/internal/reveal", { method: "POST", headers }));
     }
   }
 

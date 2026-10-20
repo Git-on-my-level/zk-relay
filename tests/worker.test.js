@@ -212,5 +212,7 @@ test("static UI preserves locked labels and never renders secrets with innerHTML
   assert.match(app, /window\.addEventListener\("drop"/);
   assert.match(app, /requestSubmit/);
   assert.doesNotMatch(app, /PREVIEW_MEDIA_TYPES = new Set\([^)]*svg/);
-  assert.match(html, /id="image-frame" class="image-frame is-veiled"/);
+  assert.match(app, /"image-frame is-veiled"/);
+  assert.match(html, /id="file-input" type="file" multiple hidden/);
+  assert.match(app, /\[RECEIVER_LEVEL_HEADER\]: String\(RECEIVER_LEVEL\)/);
 });

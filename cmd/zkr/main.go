@@ -22,16 +22,24 @@ import (
 )
 
 const (
-	protocolAAD            = "zk-relay/v1;envelope"
-	bundleMediaType        = "application/vnd.zk-relay.bundle+json"
-	maxPayloadBytes        = 1024 * 1024
-	maxContainerBytes      = 1_450_000
-	defaultOrigin          = "https://zkr.scalingforever.com"
-	defaultReceiveFile     = "secret"
-	defaultReceiveBundle   = "bundle"
-	recipientOnce          = "Retrieve exactly once and pipe the bytes directly into the destination secret store. Do not print, log, hash, transform, or save the value."
-	recipientUntilExpiry   = "Retrieve and pipe the bytes directly into the destination secret store. This link remains available until it expires. Do not print, log, hash, transform, or save the value."
+	protocolAAD          = "zk-relay/v1;envelope"
+	bundleMediaType      = "application/vnd.zk-relay.bundle+json"
+	maxPayloadBytes      = 1024 * 1024
+	maxContainerBytes    = 1_450_000
+	maxBundleItems       = 16
+	receiverLevel        = 2
+	receiverLevelHeader  = "Zk-Relay-Receiver"
+	defaultOrigin        = "https://zkr.scalingforever.com"
+	defaultReceiveFile   = "secret"
+	defaultReceiveBundle = "bundle"
+	recipientOnce        = "Retrieve exactly once and pipe the bytes directly into the destination secret store. Do not print, log, hash, transform, or save the value."
+	recipientUntilExpiry = "Retrieve and pipe the bytes directly into the destination secret store. This link remains available until it expires. Do not print, log, hash, transform, or save the value."
 )
+
+// Set at release build time with -ldflags "-X main.version=vX.Y.Z".
+var version = "dev"
+
+var errReceiverUpgrade = errors.New("receiver upgrade required")
 
 var maxResponseBytes = base64.RawURLEncoding.EncodedLen(maxContainerBytes) + 1024
 
@@ -48,6 +56,7 @@ type safeStatus struct {
 	State             string `json:"state"`
 	ExpiresAt         string `json:"expiresAt"`
 	ExpireAfterReveal bool   `json:"expireAfterReveal"`
+	MinReceiver       int    `json:"minReceiver,omitempty"`
 }
 
 type encryptedContainer struct {
@@ -107,6 +116,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return runStatus(args[1:], stdin, stdout, stderr)
 	case "receive":
 		return runReceive(args[1:], stdin, stdout, stderr)
+	case "version", "--version":
+		fmt.Fprintf(stdout, "zkr %s (receiver level %d)\n", version, receiverLevel)
+		return 0
 	default:
 		printUsage(stderr)
 		return 2
@@ -118,6 +130,11 @@ func printUsage(stderr io.Writer) {
 	fmt.Fprintln(stderr, "  zkr create --stdin|--file PATH [--ttl 1h|1d|7d] [--expire-after-reveal] [--origin URL]")
 	fmt.Fprintln(stderr, "  zkr status --link-stdin|--link URL")
 	fmt.Fprintln(stderr, "  zkr receive (--link-stdin|--link URL|URL) [--output PATH]")
+	fmt.Fprintln(stderr, "  zkr version")
+}
+
+func printUpgradeNeeded(stderr io.Writer) {
+	fmt.Fprintf(stderr, "This secret needs a newer zkr than %s. Nothing was retrieved. Install the current release from the site and retry.\n", version)
 }
 
 func runCreate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -350,6 +367,10 @@ func runReceive(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "The secret is no longer available.")
 		return 1
 	}
+	if status.MinReceiver > receiverLevel {
+		printUpgradeNeeded(stderr)
+		return 1
+	}
 	if status.ExpireAfterReveal {
 		fmt.Fprintln(stderr, "Retrieving this secret will make the link stop working.")
 	} else {
@@ -360,6 +381,10 @@ func runReceive(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 
 	container, err := claim(client, cap)
+	if errors.Is(err, errReceiverUpgrade) {
+		printUpgradeNeeded(stderr)
+		return 1
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, "The secret is no longer available.")
 		return 1
@@ -665,11 +690,15 @@ func claim(client *http.Client, cap capability) (encryptedContainer, error) {
 	}
 	request.Header.Set("Authorization", "zk-relay "+cap.tokenText)
 	request.Header.Set("Accept", "application/vnd.zk-relay.encrypted+json")
+	request.Header.Set(receiverLevelHeader, fmt.Sprint(receiverLevel))
 	response, err := client.Do(request)
 	if err != nil {
 		return encryptedContainer{}, err
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusUpgradeRequired {
+		return encryptedContainer{}, errReceiverUpgrade
+	}
 	if response.StatusCode != http.StatusOK {
 		return encryptedContainer{}, errors.New("unavailable")
 	}
@@ -775,7 +804,7 @@ func decodeBundleItems(payload []byte) ([][]byte, []bundleItem, error) {
 	if err := decoder.Decode(&parsed); err != nil {
 		return nil, nil, err
 	}
-	if len(parsed.Items) < 1 || len(parsed.Items) > 2 {
+	if len(parsed.Items) < 1 || len(parsed.Items) > maxBundleItems {
 		return nil, nil, errors.New("invalid bundle")
 	}
 	total := 0
@@ -822,17 +851,31 @@ func writeBundle(destination string, payload []byte, force bool) error {
 	}
 	used := map[string]bool{}
 	for index, item := range items {
-		name := sanitizeFilename(item.Name)
-		if used[name] {
-			return errors.New("duplicate output name")
-		}
-		used[name] = true
+		name := uniqueName(sanitizeFilename(item.Name), used)
+		used[strings.ToLower(name)] = true
 		path := filepath.Join(destination, name)
 		if err := writeSecureFile(path, itemBytes[index], force); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// uniqueName keeps two items that sanitize to the same name (two pasted
+// screenshots, "a:b" and "a-b") from colliding, as "name (2).ext". The check
+// ignores case because macOS and Windows filesystems do.
+func uniqueName(name string, used map[string]bool) string {
+	if !used[strings.ToLower(name)] {
+		return name
+	}
+	extension := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, extension)
+	for index := 2; ; index++ {
+		candidate := fmt.Sprintf("%s (%d)%s", stem, index, extension)
+		if !used[strings.ToLower(candidate)] {
+			return candidate
+		}
+	}
 }
 
 func prepareOutputDir(destination string) error {

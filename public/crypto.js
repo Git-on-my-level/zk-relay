@@ -1,6 +1,7 @@
 import {
   AAD_TEXT,
   MAX_ENCRYPTED_CONTAINER_BYTES,
+  MAX_BUNDLE_ITEMS,
   MAX_PAYLOAD_BYTES,
   PROTOCOL_VERSION,
   base64UrlToBytes,
@@ -24,8 +25,8 @@ export function makeEnvelope(kind, name, mediaType, payloadBytes) {
 }
 
 export function makeBundleEnvelope(items) {
-  if (!Array.isArray(items) || items.length < 1 || items.length > 2) {
-    throw new Error("Bundles must contain one or two items");
+  if (!Array.isArray(items) || items.length < 1 || items.length > MAX_BUNDLE_ITEMS) {
+    throw new Error(`Bundles must contain 1 to ${MAX_BUNDLE_ITEMS} items`);
   }
   let total = 0;
   const encoded = [];
@@ -55,7 +56,7 @@ export function decodeBundleItems(envelopeOrBytes) {
   } catch {
     throw new Error("Invalid encrypted envelope");
   }
-  if (!parsed || !Array.isArray(parsed.items) || parsed.items.length < 1 || parsed.items.length > 2) {
+  if (!parsed || !Array.isArray(parsed.items) || parsed.items.length < 1 || parsed.items.length > MAX_BUNDLE_ITEMS) {
     throw new Error("Invalid encrypted envelope");
   }
   let total = 0;

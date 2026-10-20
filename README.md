@@ -172,7 +172,7 @@ All secret routes return `Cache-Control: no-store, max-age=0`. The Worker sets a
 
 ## Operational limits and behavior
 
-- One UTF-8 text value, one file, or both (bundle) per secret; maximum combined plaintext payload: 1 MiB.
+- One UTF-8 text value and up to 15 files per secret; maximum combined plaintext payload: 1 MiB (about 800 KB once several items are bundled). Secrets with more than two items (three files, or text plus two files) need `zkr` v1.3.0 or later; older receivers are refused before anything is consumed.
 - The encrypted container is capped below the Durable Object SQLite 2 MB row limit.
 - Expired secrets are unavailable even if an alarm is delayed.
 - A successful removing reveal followed by a connection failure can leave the recipient without ciphertext. This is the intentional strict single-reveal tradeoff; ZK Relay has no retry lease or acknowledgement mechanism.

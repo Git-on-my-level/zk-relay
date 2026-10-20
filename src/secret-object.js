@@ -3,6 +3,8 @@ import {
   AAD_TEXT,
   MAX_ENCRYPTED_CONTAINER_BYTES,
   PROTOCOL_VERSION,
+  RECEIVER_LEVEL,
+  RECEIVER_LEVEL_HEADER,
   base64UrlToBytes,
   bytesToBase64Url
 } from "../public/protocol.js";
@@ -38,6 +40,7 @@ export function validateCreatePayload(payload) {
   if (!payload || payload.v !== PROTOCOL_VERSION || !ALLOWED_EXPIRIES.has(payload.expiresInSeconds)) return false;
   if (typeof payload.ciphertext !== "string" || typeof payload.nonce !== "string" || typeof payload.accessTokenHash !== "string") return false;
   if (typeof payload.expireAfterReveal !== "boolean") return false;
+  if (payload.minReceiver !== undefined && !(Number.isInteger(payload.minReceiver) && payload.minReceiver >= 1 && payload.minReceiver <= RECEIVER_LEVEL)) return false;
   try {
     const ciphertext = base64UrlToBytes(payload.ciphertext);
     const nonce = base64UrlToBytes(payload.nonce);
@@ -48,10 +51,19 @@ export function validateCreatePayload(payload) {
   }
 }
 
-export function claimTransition(record, suppliedHash, now = Date.now()) {
+// Requests without the header come from receivers older than level 2.
+export function receiverLevel(request) {
+  const value = Number(request.headers.get(RECEIVER_LEVEL_HEADER) || "1");
+  return Number.isInteger(value) && value >= 1 ? value : 1;
+}
+
+export function claimTransition(record, suppliedHash, now = Date.now(), level = RECEIVER_LEVEL) {
   if (!record || now >= record.expires_at) return { kind: "unavailable" };
   if (record.revealed_at !== null || record.ciphertext === null || record.nonce === null) return { kind: "gone" };
   if (!timingSafeEqual(record.access_token_hash, suppliedHash)) return { kind: "invalid" };
+  // Checked after the token and before any claim, so an outdated receiver
+  // learns it must upgrade without spending a one-shot secret.
+  if ((record.min_receiver || 1) > level) return { kind: "upgrade", minReceiver: record.min_receiver };
   return {
     kind: "success",
     remove: record.expire_after_reveal === 1,
@@ -75,9 +87,15 @@ export class SecretObject {
         expire_after_reveal INTEGER NOT NULL,
         revealed_at INTEGER,
         invalid_attempts INTEGER NOT NULL DEFAULT 0,
-        invalid_window_started_at INTEGER NOT NULL DEFAULT 0
+        invalid_window_started_at INTEGER NOT NULL DEFAULT 0,
+        min_receiver INTEGER NOT NULL DEFAULT 1
       );
     `);
+    // Objects created before receiver levels existed lack the column.
+    const columns = this.ctx.storage.sql.exec("PRAGMA table_info(secret)").toArray();
+    if (!columns.some((column) => column.name === "min_receiver")) {
+      this.ctx.storage.sql.exec("ALTER TABLE secret ADD COLUMN min_receiver INTEGER NOT NULL DEFAULT 1");
+    }
   }
 
   getRecord() {
@@ -106,8 +124,8 @@ export class SecretObject {
     this.ctx.storage.sql.exec(
       `INSERT INTO secret (
         singleton, version, ciphertext, nonce, aad, access_token_hash, created_at,
-        expires_at, expire_after_reveal, revealed_at, invalid_attempts, invalid_window_started_at
-      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 0)`,
+        expires_at, expire_after_reveal, revealed_at, invalid_attempts, invalid_window_started_at, min_receiver
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 0, ?)`,
       PROTOCOL_VERSION,
       payload.ciphertext,
       payload.nonce,
@@ -115,7 +133,8 @@ export class SecretObject {
       payload.accessTokenHash,
       now,
       expiresAt,
-      payload.expireAfterReveal ? 1 : 0
+      payload.expireAfterReveal ? 1 : 0,
+      payload.minReceiver || 1
     );
     await this.ctx.storage.setAlarm(expiresAt);
     return json({ v: PROTOCOL_VERSION, state: "available", expiresAt: new Date(expiresAt).toISOString() }, 201);
@@ -133,7 +152,9 @@ export class SecretObject {
       v: PROTOCOL_VERSION,
       state: "available",
       expiresAt: new Date(record.expires_at).toISOString(),
-      expireAfterReveal: record.expire_after_reveal === 1
+      expireAfterReveal: record.expire_after_reveal === 1,
+      // Omitted at level 1: receivers before v1.3.0 reject unknown fields.
+      ...(record.min_receiver > 1 ? { minReceiver: record.min_receiver } : {})
     });
   }
 
@@ -155,8 +176,9 @@ export class SecretObject {
       return json({ error: "unavailable" }, 410);
     }
 
-    const transition = claimTransition(record, suppliedHash, now);
+    const transition = claimTransition(record, suppliedHash, now, receiverLevel(request));
     if (transition.kind === "gone" || transition.kind === "unavailable") return json({ error: "unavailable" }, 410);
+    if (transition.kind === "upgrade") return json({ error: "receiver_upgrade_required", minReceiver: transition.minReceiver }, 426);
     if (transition.kind === "invalid") {
       if (this.recordInvalidAttempt(record, now)) return json({ error: "unavailable" }, 429);
       return json({ error: "unavailable" }, 404);

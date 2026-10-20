@@ -50,21 +50,14 @@
                 </div>
                 <span id="secret-state" class="sr-only">Secret is hidden. Use Show to reveal it.</span>
 
-                <input id="file-input" type="file" hidden>
+                <input id="file-input" type="file" multiple hidden>
                 <div class="attach-row">
+                  <ul id="file-chips" class="file-chips" aria-label="Attached files"></ul>
                   <button id="attach-file" class="attach-action" type="button">
                     <svg aria-hidden="true"><use href="/icons.svg#attachment"></use></svg>
-                    <span>Attach a file</span>
+                    <span id="attach-label">Attach a file</span>
                   </button>
-                  <span class="attach-hint">or drop one on the page, or paste it into the box</span>
-                  <span id="file-chip" class="file-chip" hidden>
-                    <svg aria-hidden="true"><use href="/icons.svg#attachment"></use></svg>
-                    <span id="file-status" class="file-status"></span>
-                    <span id="file-size" class="file-size"></span>
-                    <button id="file-remove" class="chip-remove" type="button" aria-label="Remove attached file">
-                      <svg aria-hidden="true"><use href="/icons.svg#close"></use></svg>
-                    </button>
-                  </span>
+                  <span class="attach-hint">or drop files on the page, or paste one into the box</span>
                 </div>
                 <p id="file-note" class="form-note" role="status"></p>
               </div>
@@ -200,13 +193,7 @@ b31f·88a4·02de·6f97·c15b
           <svg aria-hidden="true"><use href="/icons.svg#arrow"></use></svg>
         </button>
         <p id="human-error" class="form-error" role="alert"></p>
-        <figure id="image-preview" class="image-preview" hidden>
-          <div id="image-frame" class="image-frame is-veiled">
-            <img id="preview-image" alt="">
-            <button id="preview-visibility" class="text-action" type="button" aria-pressed="false">Show</button>
-          </div>
-        </figure>
-        <a id="file-download" class="download-action" hidden>Download file</a>
+        <div id="file-results" class="file-results" hidden></div>
         <p id="spent-note" class="spent-note" hidden>
           <svg aria-hidden="true"><use href="/icons.svg#flame"></use></svg>
           <span>This link is spent. Copy the secret now — it cannot be opened again.</span>
