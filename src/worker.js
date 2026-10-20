@@ -10,7 +10,7 @@ let creationBucket = { tokens: CREATE_BUCKET_CAPACITY, resetAt: Date.now() + CRE
 
 function securityHeaders(headers = new Headers()) {
   headers.set("cache-control", "no-store, max-age=0");
-  headers.set("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+  headers.set("content-security-policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
   headers.set("referrer-policy", "no-referrer");
   headers.set("x-content-type-options", "nosniff");
   headers.set("permissions-policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=(), clipboard-read=(), clipboard-write=(self)");

@@ -56,7 +56,7 @@
                     <svg aria-hidden="true"><use href="/icons.svg#attachment"></use></svg>
                     <span>Attach a file</span>
                   </button>
-                  <span class="attach-hint">or drop one on the box above</span>
+                  <span class="attach-hint">or drop one on the page, or paste it into the box</span>
                   <span id="file-chip" class="file-chip" hidden>
                     <svg aria-hidden="true"><use href="/icons.svg#attachment"></use></svg>
                     <span id="file-status" class="file-status"></span>
@@ -66,6 +66,7 @@
                     </button>
                   </span>
                 </div>
+                <p id="file-note" class="form-note" role="status"></p>
               </div>
             </div>
 
@@ -96,7 +97,7 @@
             <li><svg aria-hidden="true"><use href="/icons.svg#clock"></use></svg><span id="ledger-expiry">Expires in 1 hour</span></li>
           </ul>
 
-          <button id="create-links" class="primary-action" type="submit" disabled>
+          <button id="create-links" class="primary-action" type="submit" disabled aria-keyshortcuts="Meta+Enter Control+Enter" title="⌘ Enter or Ctrl Enter">
             <span>Create secure links</span>
             <svg aria-hidden="true"><use href="/icons.svg#arrow"></use></svg>
           </button>
@@ -199,6 +200,12 @@ b31f·88a4·02de·6f97·c15b
           <svg aria-hidden="true"><use href="/icons.svg#arrow"></use></svg>
         </button>
         <p id="human-error" class="form-error" role="alert"></p>
+        <figure id="image-preview" class="image-preview" hidden>
+          <div id="image-frame" class="image-frame is-veiled">
+            <img id="preview-image" alt="">
+            <button id="preview-visibility" class="text-action" type="button" aria-pressed="false">Show</button>
+          </div>
+        </figure>
         <a id="file-download" class="download-action" hidden>Download file</a>
         <p id="spent-note" class="spent-note" hidden>
           <svg aria-hidden="true"><use href="/icons.svg#flame"></use></svg>

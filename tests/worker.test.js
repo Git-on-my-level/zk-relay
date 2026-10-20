@@ -34,6 +34,7 @@ test("agent preflight is safe markdown and includes receiver guidance", async ()
   const text = await response.text();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.match(response.headers.get("content-security-policy"), /img-src 'self' data: blob:;/);
   assert.match(text, /This request did not retrieve the secret\./);
   assert.match(text, /Retrieving it will make this link stop working\./);
   assert.match(text, /zkr receive "\$ZK_RELAY_URL" --output \.\/secret/);
@@ -207,4 +208,9 @@ test("static UI preserves locked labels and never renders secrets with innerHTML
   assert.match(app, /sealResult/);
   assert.match(app, /bindResultActions/);
   assert.match(app, /authorization: `zk-relay /);
+  assert.match(app, /clipboardData\.files/);
+  assert.match(app, /window\.addEventListener\("drop"/);
+  assert.match(app, /requestSubmit/);
+  assert.doesNotMatch(app, /PREVIEW_MEDIA_TYPES = new Set\([^)]*svg/);
+  assert.match(html, /id="image-frame" class="image-frame is-veiled"/);
 });

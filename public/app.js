@@ -19,6 +19,7 @@ const elements = {
   fileStatus: el("file-status"),
   fileSize: el("file-size"),
   fileRemove: el("file-remove"),
+  fileNote: el("file-note"),
   expireAfterReveal: el("expire-after-reveal"),
   expireLabel: el("expire-label"),
   expireHint: el("expire-hint"),
@@ -44,8 +45,18 @@ const elements = {
   revealedText: el("revealed-text"),
   resultVisibility: el("result-visibility"),
   resultCopy: el("result-copy"),
-  fileDownload: el("file-download")
+  fileDownload: el("file-download"),
+  imagePreview: el("image-preview"),
+  imageFrame: el("image-frame"),
+  previewImage: el("preview-image"),
+  previewVisibility: el("preview-visibility")
 };
+
+const PREFS_KEY = "zk-relay:create-prefs";
+const SIZE_WARNING_BYTES = MAX_PAYLOAD_BYTES * 0.75;
+// Only raster formats the browser decodes inertly. SVG can carry script, so it
+// stays a download.
+const PREVIEW_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 let secretText = "";
 let selectedFile = null;
@@ -56,6 +67,7 @@ let humanExpireAfterReveal = true;
 let revealedText = "";
 let resultIsVisible = false;
 let downloadUrl = null;
+let previewUrl = null;
 let maskedComposition = null;
 
 function setAccentColor() {
@@ -73,10 +85,25 @@ function formatBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function updateSecretCount() {
+function payloadBytes() {
+  return textEncoder.encode(secretText).length + (selectedFile?.size || 0);
+}
+
+// Characters are the useful count for a password; bytes only matter as the
+// payload nears the limit, so the counter switches over then.
+function updatePayloadState() {
   const count = secretText.length;
-  elements.secretCount.textContent = count === 0 ? "empty" : `${count} character${count === 1 ? "" : "s"}`;
-  elements.secretCount.classList.toggle("is-live", count > 0);
+  const bytes = payloadBytes();
+  const over = bytes > MAX_PAYLOAD_BYTES;
+  const counter = elements.secretCount;
+  if (over) counter.textContent = `Too large · ${formatBytes(bytes)} of 1 MB`;
+  else if (bytes > SIZE_WARNING_BYTES) counter.textContent = `${formatBytes(bytes)} of 1 MB`;
+  else counter.textContent = count === 0 ? "empty" : `${count} character${count === 1 ? "" : "s"}`;
+  counter.classList.toggle("is-live", count > 0);
+  counter.classList.toggle("is-warning", !over && bytes > SIZE_WARNING_BYTES);
+  counter.classList.toggle("is-over", over);
+  counter.setAttribute("aria-hidden", String(!over));
+  elements.createLinks.disabled = over || (!selectedFile && count === 0);
 }
 
 function setSecretInput(value, selectionStart = null) {
@@ -94,12 +121,7 @@ function setSecretInput(value, selectionStart = null) {
   if (selectionStart !== null) {
     elements.secretInput.setSelectionRange(selectionStart, selectionStart);
   }
-  updateSecretCount();
-  updateCreateButton();
-}
-
-function updateCreateButton() {
-  elements.createLinks.disabled = !selectedFile && secretText.length === 0;
+  updatePayloadState();
 }
 
 function replaceMaskedSelection(inserted, mode = "insert") {
@@ -186,6 +208,23 @@ function setDuration(seconds) {
   elements.ledgerExpiry.textContent = `Expires in ${formatDuration(seconds)}`;
 }
 
+// Remember the last expiry choices on this device. Storage can be missing or
+// blocked; the defaults then stand.
+function loadPrefs() {
+  try {
+    const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
+    const durations = Array.from(document.querySelectorAll(".duration-option"), (button) => Number(button.dataset.seconds));
+    if (durations.includes(prefs.duration)) selectedDuration = prefs.duration;
+    if (typeof prefs.expireAfterReveal === "boolean") elements.expireAfterReveal.checked = prefs.expireAfterReveal;
+  } catch {}
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ duration: selectedDuration, expireAfterReveal: elements.expireAfterReveal.checked }));
+  } catch {}
+}
+
 async function attachFile() {
   elements.fileInput.click();
 }
@@ -196,7 +235,7 @@ function showFileChip(file) {
   elements.fileSize.textContent = formatBytes(file.size);
   elements.fileChip.hidden = false;
   elements.attachFile.hidden = true;
-  updateCreateButton();
+  updatePayloadState();
 }
 
 function clearFile() {
@@ -206,10 +245,15 @@ function clearFile() {
   elements.fileSize.textContent = "";
   elements.fileChip.hidden = true;
   elements.attachFile.hidden = false;
-  updateCreateButton();
+  elements.fileNote.textContent = "";
+  updatePayloadState();
 }
 
-function acceptFile(file) {
+// One file per secret. When a drop or paste carries more, or replaces the
+// file already attached, say so rather than dropping it silently.
+function acceptFiles(files) {
+  const list = Array.from(files || []);
+  const file = list[0];
   if (!file) return;
   const textBytes = textEncoder.encode(secretText).length;
   if (file.size + textBytes > MAX_PAYLOAD_BYTES) {
@@ -217,33 +261,56 @@ function acceptFile(file) {
     elements.fileInput.value = "";
     return;
   }
+  const replaced = selectedFile;
   elements.creationError.textContent = "";
   showFileChip(file);
+  const notes = [];
+  if (list.length > 1) notes.push(`Only one file can be attached, so ${list.length - 1} other${list.length > 2 ? "s were" : " was"} left out.`);
+  if (replaced) notes.push(`Replaced ${replaced.name}.`);
+  elements.fileNote.textContent = notes.join(" ");
+}
+
+// Clipboard screenshots arrive as a generic "image.png" (or with no name), so
+// give them a timestamped name the recipient can tell apart from other files.
+function namePastedFile(file) {
+  if (file.name && !/^image\.\w+$/i.test(file.name)) return file;
+  const extension = (file.type.split("/")[1] || "bin").replace(/\W.*$/, "");
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
+  return new File([file], `screenshot-${stamp}.${extension}`, { type: file.type, lastModified: file.lastModified });
 }
 
 async function chooseFile() {
-  acceptFile(elements.fileInput.files?.[0]);
+  acceptFiles(elements.fileInput.files);
 }
 
+// The whole page takes file drops. A file dropped outside a drop zone would
+// otherwise make the browser open it and throw away the form.
 function bindDropTarget() {
-  const zone = elements.secretInput;
   const wrap = elements.creationForm;
   let depth = 0;
-  zone.addEventListener("dragover", (event) => event.preventDefault());
-  zone.addEventListener("dragenter", (event) => {
+  const carriesFiles = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
+  const accepting = () => !elements.creationView.hidden;
+  window.addEventListener("dragover", (event) => {
+    if (carriesFiles(event)) event.preventDefault();
+  });
+  window.addEventListener("dragenter", (event) => {
+    if (!carriesFiles(event)) return;
     event.preventDefault();
+    if (!accepting()) return;
     depth += 1;
     wrap.classList.add("is-dragging");
   });
-  zone.addEventListener("dragleave", () => {
+  window.addEventListener("dragleave", (event) => {
+    if (!carriesFiles(event)) return;
     depth = Math.max(0, depth - 1);
     if (depth === 0) wrap.classList.remove("is-dragging");
   });
-  zone.addEventListener("drop", (event) => {
+  window.addEventListener("drop", (event) => {
+    if (!carriesFiles(event)) return;
     event.preventDefault();
     depth = 0;
     wrap.classList.remove("is-dragging");
-    acceptFile(event.dataTransfer?.files?.[0]);
+    if (accepting()) acceptFiles(event.dataTransfer.files);
   });
 }
 
@@ -328,7 +395,7 @@ async function createLinks(event) {
     if (token) token.fill(0);
     elements.createLinks.querySelector("span").textContent = "Create secure links";
     elements.createLinks.classList.remove("is-working");
-    updateCreateButton();
+    updatePayloadState();
   }
 }
 
@@ -438,7 +505,34 @@ function unsealResult() {
   setTimeout(() => elements.resultField.classList.remove("is-revealing"), 600);
 }
 
+function setPreviewVisible(visible) {
+  elements.imageFrame.classList.toggle("is-veiled", !visible);
+  elements.previewVisibility.textContent = visible ? "Hide" : "Show";
+  elements.previewVisibility.setAttribute("aria-pressed", String(visible));
+  elements.previewVisibility.setAttribute("aria-label", visible ? "Hide image preview" : "Show image preview");
+}
+
+function clearPreview() {
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = null;
+  elements.imagePreview.hidden = true;
+  elements.previewImage.removeAttribute("src");
+  elements.previewImage.alt = "";
+}
+
+function offerPreview(filename, mediaType, bytes) {
+  const type = mediaType.split(";")[0].trim().toLowerCase();
+  if (!PREVIEW_MEDIA_TYPES.has(type)) return;
+  previewUrl = URL.createObjectURL(new Blob([bytes], { type }));
+  elements.previewImage.onerror = clearPreview;
+  elements.previewImage.src = previewUrl;
+  elements.previewImage.alt = `Preview of ${filename}`;
+  setPreviewVisible(false);
+  elements.imagePreview.hidden = false;
+}
+
 function clearDownload() {
+  clearPreview();
   if (downloadUrl) URL.revokeObjectURL(downloadUrl);
   downloadUrl = null;
   elements.fileDownload.hidden = true;
@@ -485,6 +579,7 @@ function offerDownload(name, mediaType, bytes) {
   elements.fileDownload.textContent = `Download ${filename}`;
   elements.fileDownload.classList.add("primary-action");
   elements.fileDownload.hidden = false;
+  offerPreview(filename, mediaType, bytes);
 }
 
 async function revealHumanSecret(id) {
@@ -575,6 +670,9 @@ function clearSensitiveState() {
 }
 
 function bindResultActions() {
+  elements.previewVisibility.addEventListener("click", () => {
+    setPreviewVisible(elements.imageFrame.classList.contains("is-veiled"));
+  });
   elements.resultVisibility.addEventListener("click", () => {
     if (!revealedText) return;
     resultIsVisible = !resultIsVisible;
@@ -595,17 +693,32 @@ function initialize() {
   bindResultActions();
   window.addEventListener("pagehide", clearSensitiveState, { once: true });
   if (setupHumanRoute()) return;
+  loadPrefs();
+  syncExpireLabel();
   activateCreationView();
-  elements.expireAfterReveal.addEventListener("change", syncExpireLabel);
+  elements.expireAfterReveal.addEventListener("change", () => {
+    syncExpireLabel();
+    savePrefs();
+  });
   elements.secretInput.addEventListener("beforeinput", onSecretBeforeInput);
   elements.secretInput.addEventListener("input", onSecretInput);
   elements.secretInput.addEventListener("compositionstart", onSecretCompositionStart);
   elements.secretInput.addEventListener("compositionend", onSecretCompositionEnd);
   elements.secretInput.addEventListener("paste", (event) => {
-    if (!secretIsVisible) {
+    const text = event.clipboardData?.getData("text/plain") || "";
+    const file = text ? null : event.clipboardData?.files?.[0];
+    if (file) {
       event.preventDefault();
-      replaceMaskedSelection(event.clipboardData?.getData("text/plain") || "");
+      acceptFiles(Array.from(event.clipboardData.files, namePastedFile));
+    } else if (!secretIsVisible) {
+      event.preventDefault();
+      replaceMaskedSelection(text);
     }
+  });
+  elements.secretInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || event.isComposing) return;
+    event.preventDefault();
+    if (!elements.createLinks.disabled) elements.creationForm.requestSubmit();
   });
   elements.secretVisibility.addEventListener("click", () => {
     secretIsVisible = !secretIsVisible;
@@ -617,7 +730,10 @@ function initialize() {
   elements.shareAnother.addEventListener("click", shareAnother);
   bindDropTarget();
   setDuration(selectedDuration);
-  document.querySelectorAll(".duration-option").forEach((button) => button.addEventListener("click", () => setDuration(Number(button.dataset.seconds))));
+  document.querySelectorAll(".duration-option").forEach((button) => button.addEventListener("click", () => {
+    setDuration(Number(button.dataset.seconds));
+    savePrefs();
+  }));
   elements.creationForm.addEventListener("submit", createLinks);
   document.querySelectorAll(".link-visibility").forEach((button) => button.addEventListener("click", () => toggleLinkVisibility(button)));
   document.querySelectorAll(".copy-link").forEach((button) => button.addEventListener("click", () => {
