@@ -22,7 +22,8 @@ test("browser decrypts the shared receiver-compatible v1 vector", async () => {
     { v: envelope.v, kind: envelope.kind, name: envelope.name, mediaType: envelope.mediaType, data: envelope.data },
     vector.envelope
   );
-  assert.equal(new TextDecoder().decode(envelope.bytes), "zk-relay-interoperability");
+  assert.equal(new TextDecoder().decode(envelope.bytes), vector.value);
+  assert.notEqual(envelope.data, vector.value, "data is base64url; the value is its decoded bytes");
   envelope.bytes.fill(0);
 });
 

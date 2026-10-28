@@ -129,6 +129,7 @@
               <div class="link-head">
                 <svg aria-hidden="true"><use href="/icons.svg#terminal"></use></svg>
                 <h2>Agent friendly link</h2>
+                <button id="copy-agent-message" class="text-action link-head-action" type="button" title="Copies the link with a short note telling the agent to use zkr">Copy with instructions</button>
               </div>
               <p class="link-note">Safe to hand to a tool-using agent. Fetching it returns instructions, never the ciphertext, so the secret stays out of the transcript.</p>
               <div class="link-field">
@@ -186,6 +187,7 @@ b31f·88a4·02de·6f97·c15b
               <button id="result-copy" class="icon-button" type="button" aria-label="Copy retrieved secret"><svg aria-hidden="true"><use href="/icons.svg#copy"></use></svg></button>
             </div>
           </div>
+          <p id="result-meta" class="result-meta" hidden></p>
         </div>
 
         <button id="reveal-secret" class="primary-action" type="button" disabled>

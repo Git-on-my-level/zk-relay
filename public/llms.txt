@@ -19,7 +19,7 @@ security find-generic-password -s SERVICE -a ACCOUNT -w \
   | zkr create --stdin --ttl 1h --expire-after-reveal
 ```
 
-Secret bytes must arrive via stdin or `--file`, never as a command argument. Default create output is plain English with the agent link and a recipient instruction.
+Secret bytes must arrive via stdin or `--file`, never as a command argument. One trailing newline on stdin is dropped; `--keep-newline` keeps it. Default create output is plain English with the agent link and a recipient instruction.
 
 ## Agent receive
 
@@ -29,7 +29,9 @@ Agent links return preflight instructions, not ciphertext. Preferred command:
 zkr receive --link-stdin --output ./secret
 ```
 
-Plaintext stdout is gated: `--stdout --allow-plaintext-stdout` (pipe into a secret store; do not print).
+Plaintext stdout is gated: `--stdout --allow-plaintext-stdout` (pipe into a secret store; do not print). zkr output is already decoded.
+
+Hand-rolled receivers: envelope `data` is base64url for every kind, including text. The secret is `base64url_decode(data)`, never `data` (`SGVsbG8gd29ybGQ` → `Hello world`).
 
 ## Status (non-consuming)
 

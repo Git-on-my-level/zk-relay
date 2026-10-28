@@ -62,6 +62,7 @@ test("agent JSON and HTML preflight representations retain safe retrieval guidan
   assert.equal(manifest.receiverContract.file_safety.max_payload_bytes, 1048576);
   assert.deepEqual(manifest.receiverContract.envelope.kinds, ["text", "file", "bundle"]);
   assert.deepEqual(manifest.receiverContract.envelope.bundle_items.fields, ["kind", "name", "mediaType", "data"]);
+  assert.deepEqual(manifest.receiverContract.envelope.value_example, { data: "SGVsbG8gd29ybGQ", value: "Hello world" });
   assert.equal(manifest.receiverContract.receiver_contract, "https://zk-relay.test/protocol/v1");
 
   const htmlFixture = statusEnvironment();
@@ -213,6 +214,10 @@ test("static UI preserves locked labels and never renders secrets with innerHTML
   assert.match(app, /requestSubmit/);
   assert.doesNotMatch(app, /PREVIEW_MEDIA_TYPES = new Set\([^)]*svg/);
   assert.match(app, /"image-frame is-veiled"/);
+  assert.match(app, /function trailingWhitespace/);
+  assert.match(html, /id="result-meta"/);
+  assert.match(html, /id="copy-agent-message"/);
+  assert.match(app, /zkr receive "\$ZK_RELAY_URL" --output \.\/secret/);
   assert.match(html, /id="file-input" type="file" multiple hidden/);
   assert.match(app, /\[RECEIVER_LEVEL_HEADER\]: String\(RECEIVER_LEVEL\)/);
 });

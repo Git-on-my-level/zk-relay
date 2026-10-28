@@ -43,6 +43,8 @@ const elements = {
   revealedText: el("revealed-text"),
   resultVisibility: el("result-visibility"),
   resultCopy: el("result-copy"),
+  resultMeta: el("result-meta"),
+  copyAgentMessage: el("copy-agent-message"),
   fileResults: el("file-results")
 };
 
@@ -72,6 +74,14 @@ function setAccentColor() {
 
 function maskValue(value) {
   return value.replace(/[^\n]/g, "•");
+}
+
+// A pasted password often picks up a trailing line break or space that the
+// destination will treat as part of the value. Name it so nobody ships it blind.
+function trailingWhitespace(value) {
+  if (/\r?\n$/.test(value)) return "line break";
+  if (/[ \t]$/.test(value)) return "space";
+  return null;
 }
 
 function formatBytes(bytes) {
@@ -113,8 +123,10 @@ function updatePayloadState() {
   if (size.over) counter.textContent = `Too large · ${formatBytes(size.raw)} of ${size.limit}`;
   else if (warn) counter.textContent = `${formatBytes(size.raw)} of ${size.limit}`;
   else counter.textContent = count === 0 ? "empty" : `${count} character${count === 1 ? "" : "s"}`;
+  const trailing = !size.over && !warn ? trailingWhitespace(secretText) : null;
+  if (trailing) counter.textContent = `trailing ${trailing}`;
   counter.classList.toggle("is-live", count > 0);
-  counter.classList.toggle("is-warning", warn);
+  counter.classList.toggle("is-warning", warn || Boolean(trailing));
   counter.classList.toggle("is-over", size.over);
   counter.setAttribute("aria-hidden", String(!size.over));
   elements.createLinks.disabled = size.over || (selectedFiles.length === 0 && count === 0);
@@ -500,6 +512,29 @@ function copyFallbackTarget() {
   return elements.humanView.hidden ? elements.copyStatus : elements.humanError;
 }
 
+// The agent link alone tells an agent nothing until it fetches it. This hands
+// over the link with the one instruction that matters: use zkr, keep it quiet.
+function agentMessage(link) {
+  return [
+    `Use zkr to retrieve this secret: ${link}`,
+    "",
+    'zkr receive "$ZK_RELAY_URL" --output ./secret',
+    "",
+    "Set ZK_RELAY_URL to the link above. ./secret then holds the exact value: move it into its destination and do not print or log it. Fetching the link gives install steps if you don't have zkr."
+  ].join("\n");
+}
+
+function flashCopiedText(button) {
+  if (!button.dataset.copyLabel) button.dataset.copyLabel = button.textContent;
+  clearTimeout(button._copiedTimer);
+  button.textContent = "Copied";
+  button.classList.add("is-copied");
+  button._copiedTimer = setTimeout(() => {
+    button.textContent = button.dataset.copyLabel;
+    button.classList.remove("is-copied");
+  }, 1500);
+}
+
 async function copyValue(value, input, button = null, revealForFallback = null) {
   const status = copyFallbackTarget();
   try {
@@ -536,6 +571,17 @@ function setRevealLedger(target, once) {
   icon.querySelector("use")?.setAttribute("href", once ? "/icons.svg#flame" : "/icons.svg#repeat");
 }
 
+// Shape without content: enough to check the value before pasting it.
+function describeResult(value) {
+  const lines = value.replace(/\r?\n$/, "").split(/\r?\n/).length;
+  const parts = [`${value.length} character${value.length === 1 ? "" : "s"}`, lines === 1 ? "single line" : `${lines} lines`];
+  const trailing = trailingWhitespace(value);
+  if (trailing) parts.push(`ends with a ${trailing}, which Copy includes`);
+  elements.resultMeta.textContent = parts.join(" · ");
+  elements.resultMeta.classList.toggle("is-warning", Boolean(trailing));
+  elements.resultMeta.hidden = false;
+}
+
 function setResultText(value) {
   revealedText = value;
   elements.revealedText.value = resultIsVisible ? revealedText : maskValue(revealedText);
@@ -554,6 +600,8 @@ function sealResult() {
   elements.resultActions.hidden = true;
   elements.resultVisibility.textContent = "Show";
   elements.resultVisibility.setAttribute("aria-pressed", "false");
+  elements.resultMeta.hidden = true;
+  elements.resultMeta.textContent = "";
 }
 
 function unsealResult() {
@@ -682,6 +730,7 @@ async function revealHumanSecret(id) {
       elements.humanResult.hidden = false;
       unsealResult();
       setResultText(textDecoder.decode(textItem.bytes));
+      describeResult(revealedText);
     } else {
       elements.humanResult.hidden = true;
       sealResult();
@@ -692,6 +741,9 @@ async function revealHumanSecret(id) {
     elements.revealSecret.hidden = true;
     elements.revealSecret.classList.remove("is-working");
     elements.humanNotice.hidden = true;
+    elements.humanExplanation.textContent = humanExpireAfterReveal
+      ? "Decrypted in this browser."
+      : "Decrypted in this browser. The link keeps working until it expires.";
     elements.spentNote.hidden = !humanExpireAfterReveal;
     if (humanExpireAfterReveal) wipeCapability();
   } catch (error) {
@@ -731,6 +783,7 @@ function clearSensitiveState() {
   elements.humanLink.value = "";
   elements.agentLink.value = "";
   elements.revealedText.value = "";
+  elements.resultMeta.textContent = "";
   wipeCapability();
   clearDownload();
 }
@@ -802,6 +855,17 @@ function initialize() {
     const input = el(button.dataset.target);
     copyValue(input.value, input, button);
   }));
+  elements.copyAgentMessage.addEventListener("click", async () => {
+    const link = elements.agentLink.value;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(agentMessage(link));
+      elements.copyStatus.textContent = "";
+      flashCopiedText(elements.copyAgentMessage);
+    } catch {
+      copyValue(link, elements.agentLink);
+    }
+  });
 }
 
 initialize();
