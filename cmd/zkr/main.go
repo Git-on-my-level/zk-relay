@@ -32,8 +32,9 @@ const (
 	defaultOrigin        = "https://zkr.scalingforever.com"
 	defaultReceiveFile   = "secret"
 	defaultReceiveBundle = "bundle"
-	recipientOnce        = "Retrieve exactly once and pipe the bytes directly into the destination secret store. Do not print, log, hash, transform, or save the value."
-	recipientUntilExpiry = "Retrieve and pipe the bytes directly into the destination secret store. This link remains available until it expires. Do not print, log, hash, transform, or save the value."
+	recipientOnce        = "Retrieve exactly once with zkr receive and pipe its output directly into the destination secret store; that output is the exact value. Do not print, log, hash, or save it anywhere else. " + manualDecodeNote
+	recipientUntilExpiry = "Retrieve with zkr receive and pipe its output directly into the destination secret store; that output is the exact value. This link remains available until it expires. Do not print, log, hash, or save it anywhere else. " + manualDecodeNote
+	manualDecodeNote     = "Without zkr, follow /protocol/v1: the value is base64url-decode(envelope.data), never data itself."
 )
 
 // Set at release build time with -ldflags "-X main.version=vX.Y.Z".
@@ -127,7 +128,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 func printUsage(stderr io.Writer) {
 	fmt.Fprintln(stderr, "Usage:")
-	fmt.Fprintln(stderr, "  zkr create --stdin|--file PATH [--ttl 1h|1d|7d] [--expire-after-reveal] [--origin URL]")
+	fmt.Fprintln(stderr, "  zkr create --stdin|--file PATH [--ttl 1h|1d|7d] [--expire-after-reveal] [--keep-newline] [--origin URL]")
 	fmt.Fprintln(stderr, "  zkr status --link-stdin|--link URL")
 	fmt.Fprintln(stderr, "  zkr receive (--link-stdin|--link URL|URL) [--output PATH]")
 	fmt.Fprintln(stderr, "  zkr version")
@@ -145,6 +146,7 @@ func runCreate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	ttl := flags.String("ttl", "1h", "expiry: 1h, 1d, or 7d")
 	expireAfterReveal := flags.Bool("expire-after-reveal", true, "consume the secret after one successful reveal")
 	origin := flags.String("origin", defaultOriginValue(), "ZK Relay origin")
+	keepNewline := flags.Bool("keep-newline", false, "send a trailing newline from stdin as part of the secret")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -178,6 +180,14 @@ func runCreate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer zero(payload)
+	// Keychain and password-manager CLIs end their output with a newline that is
+	// not part of the secret. Sending it makes the receiver store a wrong value.
+	if *useStdin && !*keepNewline {
+		if trimmed := trimOneNewline(payload); len(trimmed) != len(payload) {
+			payload = trimmed
+			fmt.Fprintln(stderr, "Removed the trailing newline from stdin. Pass --keep-newline to send it.")
+		}
+	}
 	if len(payload) == 0 || len(payload) > maxPayloadBytes {
 		fmt.Fprintln(stderr, "Secret must be between 1 byte and 1 MiB.")
 		return 2
@@ -376,6 +386,10 @@ func runReceive(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	} else {
 		fmt.Fprintln(stderr, "Retrieving this secret will leave it available until it expires.")
 	}
+	if *plainStdout && status.MinReceiver >= 2 {
+		fmt.Fprintln(stderr, "This share holds several items and cannot be written to stdout. Nothing was retrieved. Use --output with a directory.")
+		return 2
+	}
 	if *plainStdout && status.ExpireAfterReveal {
 		fmt.Fprintln(stderr, "Warning: --stdout cannot deliver bundles. A one-shot bundle share would be consumed without plaintext.")
 	}
@@ -414,6 +428,7 @@ func runReceive(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "Could not write plaintext to stdout.")
 			return 1
 		}
+		fmt.Fprintf(stderr, "Wrote the decoded value to stdout (%s).\n", describeValue(decodedEnvelope.Kind, plain))
 		return 0
 	}
 
@@ -438,8 +453,28 @@ func runReceive(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Could not safely write the local output file.")
 		return 1
 	}
-	fmt.Fprintln(stderr, "Saved decrypted value to a local file.")
+	fmt.Fprintf(stderr, "Saved the decoded value to a local file (%s).\n", describeValue(decodedEnvelope.Kind, plain))
 	return 0
+}
+
+// describeValue gives a receiver enough shape to check its work without
+// showing the value: kind, byte count, and whether it ends in a newline.
+func describeValue(kind string, value []byte) string {
+	ending := "no trailing newline"
+	if len(value) > 0 && value[len(value)-1] == '\n' {
+		ending = "ends with a newline"
+	}
+	return fmt.Sprintf("%s, %d bytes, %s", kind, len(value), ending)
+}
+
+func trimOneNewline(value []byte) []byte {
+	if bytes.HasSuffix(value, []byte("\r\n")) {
+		return value[:len(value)-2]
+	}
+	if bytes.HasSuffix(value, []byte("\n")) {
+		return value[:len(value)-1]
+	}
+	return value
 }
 
 func prepareReceiveOutput(output string, force bool) error {

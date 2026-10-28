@@ -41,7 +41,7 @@ op read "op://Vault/Item/password" \
   | zkr create --stdin --ttl 1h --expire-after-reveal
 ```
 
-Successful create prints a plain-English record with the agent link and a recipient instruction. Inspect without consuming:
+Successful create prints a plain-English record with the agent link and a recipient instruction. `--stdin` drops one trailing newline (keychain and password-manager CLIs add one); pass `--keep-newline` to send it. Inspect without consuming:
 
 ```sh
 zkr status --link-stdin
@@ -53,6 +53,8 @@ zkr status --link-stdin
 - Preferred command: `zkr receive "$ZK_RELAY_URL" --output ./secret` (or `zkr receive --link-stdin --output ./secret`)
 - Official receiver contract: [`/protocol/v1`](protocol/v1.md)
 - Plaintext stdout is gated behind `--stdout --allow-plaintext-stdout` with a transcript-risk warning
+- Output is the decoded value. `zkr` reports its kind, byte count and trailing newline on stderr so an agent can check it without printing it
+- Writing your own receiver? The envelope `data` field is base64url even for text. The secret is the decoded bytes; check against `value` in `protocol/test-vectors.json`
 - The official receiver accepts only complete agent links and rejects unsafe `--output` targets before claiming a one-time secret
 
 Pipe into a destination secret store (never print the value):
@@ -73,7 +75,7 @@ zkr receive --link-stdin --stdout --allow-plaintext-stdout \
 
 ## What a human recipient does
 
-A human opens `/h/:id`, safely reads the warning, and explicitly chooses **Reveal secret**. Decryption happens in that browser.
+A human opens `/h/:id`, safely reads the warning, and explicitly chooses **Retrieve secret**. Decryption happens in that browser.
 
 By default, a secret can be revealed many times until its time limit. Enable **Secret expires after being revealed** for one-shot retrieval. The available limits are 1 hour, 1 day, and 7 days.
 

@@ -184,8 +184,10 @@ h1 + .card, h1 + form, h1 + .stagger { margin-top: 1.5rem; }
   margin-bottom: .5rem;
 }
 .field-tools { display: inline-flex; align-items: center; gap: .5rem; }
+.field-head .field-label { white-space: nowrap; }
 .char-count {
   color: var(--muted);
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: .6875rem;
   font-variant-numeric: tabular-nums;
@@ -481,10 +483,12 @@ textarea:focus {
 
 /* ── share view ──────────────────────────────────────────── */
 .link-section + .link-section { margin-top: 1rem; }
-.link-head { display: flex; align-items: center; gap: .55rem; }
+.link-head { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .55rem; }
 .link-head svg { width: 1.05rem; height: 1.05rem; color: var(--accent); }
+.link-head-action { margin-left: auto; white-space: nowrap; }
 .link-section h2 {
   margin: 0;
+  white-space: nowrap;
   font-family: var(--font-body);
   font-size: .9375rem;
   font-weight: 620;
@@ -542,6 +546,7 @@ textarea:focus {
 .icon-button.is-copied { color: var(--accent); background: var(--accent-quiet); }
 .icon-button.is-copied svg { animation: pop .3s var(--ease); }
 
+.text-action.is-copied { color: var(--accent); background: var(--accent-quiet); }
 .run-hint {
   display: flex;
   align-items: baseline;
@@ -591,6 +596,8 @@ textarea:focus {
   font-family: var(--font-mono);
   font-size: .875rem;
   line-height: 1.6;
+  /* The grip sat under the Copy button; the value is read-only anyway. */
+  resize: none;
 }
 .result-field textarea.is-masked { letter-spacing: .06em; }
 
@@ -635,6 +642,15 @@ textarea:focus {
   animation: rise .35s var(--ease) both;
 }
 .result-actions .text-action { height: 2rem; padding: 0 .55rem; }
+.result-meta {
+  margin: .45rem 0 0;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: .6875rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+.result-meta.is-warning { color: var(--amber); }
 
 .download-action {
   display: inline-flex;

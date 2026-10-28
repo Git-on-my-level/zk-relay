@@ -162,6 +162,8 @@ function receiverContract(origin) {
       fields: ["v", "kind", "name", "mediaType", "data"],
       kinds: ["text", "file", "bundle"],
       data_encoding: "base64url",
+      value: "base64url_decode(data). data is never the secret itself: a receiver that stores data verbatim delivers a different, valid-looking value.",
+      value_example: { data: "SGVsbG8gd29ybGQ", value: "Hello world" },
       route_after_decrypt: true,
       bundle_items: {
         fields: ["kind", "name", "mediaType", "data"],
@@ -260,7 +262,7 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 
 ## Receiver contract (authoritative)
 
-Same retrieval path for text and files. Decrypt first; the envelope \`kind\` decides handling. Authorization scheme is exactly \`zk-relay\` (lowercase).
+Same retrieval path for text and files. Decrypt first; the envelope \`kind\` decides handling. The envelope \`data\` field is base64url for every kind, including text: the secret is the decoded bytes, never \`data\` itself (\`SGVsbG8gd29ybGQ\` → \`Hello world\`). Authorization scheme is exactly \`zk-relay\` (lowercase).
 
 \`\`\`json
 ${JSON.stringify(contract, null, 2)}
@@ -296,7 +298,7 @@ export function agentManifest(origin, status, tools) {
     retrievalBehavior,
     retrieved: false,
     preferredCommand: "zkr receive \"$ZK_RELAY_URL\" --output ./secret",
-    plaintextDelivery: "The preferred receiver writes a local file and does not print plaintext. It handles text and file envelopes the same until after decrypt.",
+    plaintextDelivery: "The preferred receiver writes a local file and does not print plaintext. It handles text and file envelopes the same until after decrypt, and its output is already decoded.",
     receiverContract: receiverContract(origin),
     receiver: tools,
     manualProtocol: `${origin}/protocol/v1`,

@@ -21,6 +21,7 @@ type testVector struct {
 	Key        string   `json:"key"`
 	Nonce      string   `json:"nonce"`
 	Envelope   envelope `json:"envelope"`
+	Value      string   `json:"value"`
 	Ciphertext string   `json:"ciphertext"`
 }
 
@@ -51,7 +52,7 @@ func TestReceiverDecryptsBrowserVector(t *testing.T) {
 	if decoded != vector.Envelope {
 		t.Fatalf("envelope mismatch: %#v", decoded)
 	}
-	if string(plain) != "zk-relay-interoperability" {
+	if string(plain) != vector.Value || vector.Envelope.Data == vector.Value {
 		t.Fatalf("unexpected plaintext: %q", plain)
 	}
 }
@@ -566,6 +567,92 @@ func TestReceiveSendsLevelAndReportsUpgradeRequired(t *testing.T) {
 	code := run([]string{"receive", server.URL + "/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key, "--output", "out"}, strings.NewReader(""), &stdout, &stderr)
 	if code != 1 || sentLevel != fmt.Sprint(receiverLevel) || !strings.Contains(stderr.String(), "needs a newer zkr") {
 		t.Fatalf("code=%d level=%q stderr=%q", code, sentLevel, stderr.String())
+	}
+}
+
+func TestCreateTrimsOneTrailingNewlineFromStdin(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		args  []string
+		want  string
+		note  bool
+	}{
+		{"keychain newline", "hunter2\n", nil, "hunter2", true},
+		{"crlf", "hunter2\r\n", nil, "hunter2", true},
+		{"only one", "hunter2\n\n", nil, "hunter2\n", true},
+		{"no newline", "hunter2", nil, "hunter2", false},
+		{"keep", "hunter2\n", []string{"--keep-newline"}, "hunter2\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var sent createRequest
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				_ = json.NewDecoder(request.Body).Decode(&sent)
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(http.StatusCreated)
+				_ = json.NewEncoder(writer).Encode(createResponse{V: 1, ID: "abcdefghijklmnopqrstuvwx", ExpiresAt: "2030-01-01T00:00:00.000Z"})
+			}))
+			defer server.Close()
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"create", "--stdin", "--origin", server.URL}, tc.args...)
+			if code := run(args, strings.NewReader(tc.input), &stdout, &stderr); code != 0 {
+				t.Fatalf("exit = %d stderr=%q", code, stderr.String())
+			}
+			link := strings.SplitN(strings.SplitN(stdout.String(), "Agent link: ", 2)[1], "\n", 2)[0]
+			cap, err := parseRelayURL(link)
+			if err != nil {
+				t.Fatal(err)
+			}
+			plain, _, err := decryptContainer(encryptedContainer{V: 1, Ciphertext: sent.Ciphertext, Nonce: sent.Nonce, AAD: protocolAAD}, cap.key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(plain) != tc.want {
+				t.Fatalf("sent %q, want %q", plain, tc.want)
+			}
+			if got := strings.Contains(stderr.String(), "Removed the trailing newline"); got != tc.note {
+				t.Fatalf("note = %v stderr=%q", got, stderr.String())
+			}
+		})
+	}
+}
+
+func TestReceiveStdoutRefusesMultiItemShareBeforeClaim(t *testing.T) {
+	vector := loadVector(t)
+	claimed := false
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/reveal") {
+			claimed = true
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(safeStatus{V: 1, State: "available", ExpiresAt: "2030-01-01T00:00:00Z", ExpireAfterReveal: true, MinReceiver: 2})
+	}))
+	defer server.Close()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"receive", server.URL + "/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key, "--stdout", "--allow-plaintext-stdout"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 2 || claimed || !strings.Contains(stderr.String(), "Nothing was retrieved") {
+		t.Fatalf("code=%d claimed=%v stderr=%q", code, claimed, stderr.String())
+	}
+}
+
+func TestReceiveStdoutWritesDecodedValueAndShape(t *testing.T) {
+	vector := loadVector(t)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(request.URL.Path, "/reveal") {
+			_ = json.NewEncoder(writer).Encode(encryptedContainer{V: 1, Ciphertext: vector.Ciphertext, Nonce: vector.Nonce, AAD: vector.AAD})
+			return
+		}
+		_ = json.NewEncoder(writer).Encode(safeStatus{V: 1, State: "available", ExpiresAt: "2030-01-01T00:00:00Z", ExpireAfterReveal: true})
+	}))
+	defer server.Close()
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"receive", server.URL + "/a/abcdefghijklmnopqrstuv#v1." + vector.Key + "." + vector.Key, "--stdout", "--allow-plaintext-stdout"}, strings.NewReader(""), &stdout, &stderr)
+	if code != 0 || stdout.String() != vector.Value {
+		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), fmt.Sprintf("text, %d bytes, no trailing newline", len(vector.Value))) {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
