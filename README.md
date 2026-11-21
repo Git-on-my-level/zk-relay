@@ -122,6 +122,8 @@ This produces untracked artifacts under `dist/tools/v1.2.1/` (`zkr-*`, `checksum
 
 On a Mac, that script signs both darwin binaries with the Developer ID Application certificate in the login keychain and notarizes them before it writes checksums. Gatekeeper then accepts a browser download while the Mac is online. The ticket cannot be stapled to a raw binary, so the first launch needs network; a signed `.pkg` is the offline alternative. `ZKR_SKIP_APPLE_SIGN=1` leaves the darwin binaries linker-signed.
 
+Run the release from the maintainer Mac's signed-in session and keep it unlocked through notarization. A screen lock can make `notarytool` report that the profile is missing. Unlock the Mac and run `xcrun notarytool history --keychain-profile zkr-notary` before replacing any credential. The default profile lookup uses the data protection keychain. [Apple notarization guide](https://developer.apple.com/documentation/technotes/tn3147-migrating-to-the-latest-notarization-tool)
+
 One-time Apple setup, then later releases stay `./scripts/build-tools.sh vX.Y.Z` on this Mac:
 
 1. In [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/certificates/list), create a **Developer ID Application** certificate and choose **G2 Sub-CA**. Certificates from the previous Sub-CA expire 1 February 2027 and cannot sign new releases after that.
