@@ -41,7 +41,7 @@ op read "op://Vault/Item/password" \
   | zkr create --stdin --ttl 1h --expire-after-reveal
 ```
 
-Successful create prints a plain-English record with the agent link and a recipient instruction. `--stdin` drops one trailing newline (keychain and password-manager CLIs add one); pass `--keep-newline` to send it. Inspect without consuming:
+Successful create prints a plain-English record with the agent link and a recipient instruction. `--stdin` drops one trailing newline (keychain and password-manager CLIs add one); pass `--keep-newline` to send it. `--file PATH` shares UTF-8 input as text and other inputs as downloadable attachments with their original filename. Inspect without consuming:
 
 ```sh
 zkr status --link-stdin
