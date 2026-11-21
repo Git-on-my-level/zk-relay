@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -219,6 +220,11 @@ func runCreate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		MediaType: "text/plain; charset=utf-8",
 		Data:      base64.RawURLEncoding.EncodeToString(payload),
 	}
+	if *filePath != "" && !utf8.Valid(payload) {
+		env.Kind = "file"
+		env.Name = filepath.Base(*filePath)
+		env.MediaType = "application/octet-stream"
+	}
 	ciphertext, err := encryptEnvelope(env, key, nonce)
 	if err != nil {
 		fmt.Fprintln(stderr, "Could not encrypt the secret.")
@@ -276,6 +282,9 @@ func runCreate(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if *expireAfterReveal {
 		consumes = "yes"
 		recipient = recipientOnce
+	}
+	if env.Kind == "file" {
+		recipient = "Save the attachment using zkr receive with --output, or download it from the human link."
 	}
 	fmt.Fprintf(stdout, "Created: yes\nState: available\nExpires: %s\nConsumes on reveal: %s\nAgent link: %s\nHuman link: %s\n\nRecipient: %s\n",
 		created.ExpiresAt, consumes, agentLink, humanLink, recipient)

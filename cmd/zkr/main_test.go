@@ -570,19 +570,23 @@ func TestReceiveSendsLevelAndReportsUpgradeRequired(t *testing.T) {
 	}
 }
 
-func TestCreateTrimsOneTrailingNewlineFromStdin(t *testing.T) {
+func TestCreatePreservesPayloadAndChoosesEnvelopeKind(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		input string
 		args  []string
 		want  string
 		note  bool
+		file  bool
+		kind  string
 	}{
-		{"keychain newline", "hunter2\n", nil, "hunter2", true},
-		{"crlf", "hunter2\r\n", nil, "hunter2", true},
-		{"only one", "hunter2\n\n", nil, "hunter2\n", true},
-		{"no newline", "hunter2", nil, "hunter2", false},
-		{"keep", "hunter2\n", []string{"--keep-newline"}, "hunter2\n", false},
+		{"keychain newline", "hunter2\n", nil, "hunter2", true, false, "text"},
+		{"crlf", "hunter2\r\n", nil, "hunter2", true, false, "text"},
+		{"only one", "hunter2\n\n", nil, "hunter2\n", true, false, "text"},
+		{"no newline", "hunter2", nil, "hunter2", false, false, "text"},
+		{"keep", "hunter2\n", []string{"--keep-newline"}, "hunter2\n", false, false, "text"},
+		{"UTF-8 file keeps newline", "déjà\n", nil, "déjà\n", false, true, "text"},
+		{"binary file keeps exact bytes", "\x1f\x8b\x00\xff\n", nil, "\x1f\x8b\x00\xff\n", false, true, "file"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var sent createRequest
@@ -594,7 +598,21 @@ func TestCreateTrimsOneTrailingNewlineFromStdin(t *testing.T) {
 			}))
 			defer server.Close()
 			var stdout, stderr bytes.Buffer
-			args := append([]string{"create", "--stdin", "--origin", server.URL}, tc.args...)
+			args := []string{"create", "--origin", server.URL}
+			if tc.file {
+				chdirTemp(t)
+				path := filepath.Join("fixtures", "input.dat")
+				if err := os.Mkdir("fixtures", 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(tc.input), 0600); err != nil {
+					t.Fatal(err)
+				}
+				args = append(args, "--file", path)
+			} else {
+				args = append(args, "--stdin")
+			}
+			args = append(args, tc.args...)
 			if code := run(args, strings.NewReader(tc.input), &stdout, &stderr); code != 0 {
 				t.Fatalf("exit = %d stderr=%q", code, stderr.String())
 			}
@@ -603,12 +621,18 @@ func TestCreateTrimsOneTrailingNewlineFromStdin(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			plain, _, err := decryptContainer(encryptedContainer{V: 1, Ciphertext: sent.Ciphertext, Nonce: sent.Nonce, AAD: protocolAAD}, cap.key)
+			plain, env, err := decryptContainer(encryptedContainer{V: 1, Ciphertext: sent.Ciphertext, Nonce: sent.Nonce, AAD: protocolAAD}, cap.key)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if string(plain) != tc.want {
 				t.Fatalf("sent %q, want %q", plain, tc.want)
+			}
+			if env.Kind != tc.kind {
+				t.Fatalf("kind = %q, want %q", env.Kind, tc.kind)
+			}
+			if tc.kind == "file" && (env.Name != "input.dat" || env.MediaType != "application/octet-stream" || !strings.Contains(stdout.String(), "Save the attachment")) {
+				t.Fatal("binary attachment metadata or recipient instructions were incorrect")
 			}
 			if got := strings.Contains(stderr.String(), "Removed the trailing newline"); got != tc.note {
 				t.Fatalf("note = %v stderr=%q", got, stderr.String())

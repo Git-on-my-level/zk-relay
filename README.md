@@ -41,7 +41,7 @@ op read "op://Vault/Item/password" \
   | zkr create --stdin --ttl 1h --expire-after-reveal
 ```
 
-Successful create prints a plain-English record with the agent link and a recipient instruction. `--stdin` drops one trailing newline (keychain and password-manager CLIs add one); pass `--keep-newline` to send it. Inspect without consuming:
+Successful create prints a plain-English record with the agent link and a recipient instruction. `--stdin` drops one trailing newline (keychain and password-manager CLIs add one); pass `--keep-newline` to send it. `--file PATH` shares UTF-8 input as text and other inputs as downloadable attachments with their original filename. Inspect without consuming:
 
 ```sh
 zkr status --link-stdin
@@ -121,6 +121,8 @@ Agents shipping a release follow [AGENTS.md](AGENTS.md). Build and GPG-sign the 
 This produces untracked artifacts under `dist/tools/v1.2.1/` (`zkr-*`, `checksums.txt`, `SHA256SUMS`, and `SHA256SUMS.asc` when `gpg` is available). Upload those files to the HTTPS location configured by `TOOL_RELEASE_BASE_URL`, publish the matching public key (see `public/zk-relay-releases.txt`), then set every `TOOL_SHA256_*` value and `TOOL_GPG_FINGERPRINT` in `wrangler.jsonc`. Binaries are not committed.
 
 On a Mac, that script signs both darwin binaries with the Developer ID Application certificate in the login keychain and notarizes them before it writes checksums. Gatekeeper then accepts a browser download while the Mac is online. The ticket cannot be stapled to a raw binary, so the first launch needs network; a signed `.pkg` is the offline alternative. `ZKR_SKIP_APPLE_SIGN=1` leaves the darwin binaries linker-signed.
+
+Run the release from the maintainer Mac's signed-in session and keep it unlocked through notarization. A screen lock can make `notarytool` report that the profile is missing. Unlock the Mac and run `xcrun notarytool history --keychain-profile zkr-notary` before replacing any credential. The default profile lookup uses the data protection keychain. [Apple notarization guide](https://developer.apple.com/documentation/technotes/tn3147-migrating-to-the-latest-notarization-tool)
 
 One-time Apple setup, then later releases stay `./scripts/build-tools.sh vX.Y.Z` on this Mac:
 

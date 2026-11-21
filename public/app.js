@@ -723,27 +723,41 @@ async function revealHumanSecret(id) {
     if (!result.ok) throw new Error("The secret is no longer available.");
     const envelope = await decryptContainer(await result.json(), capability.key);
     const items = envelope.kind === "bundle" ? envelope.items || decodeBundleItems(envelope) : [envelope];
-    // The first text item fills the secret box; anything else is a download.
     const textItem = items.find((item) => item.kind === "text");
+    const downloads = items.filter((item) => item !== textItem);
+    let text;
+    let binaryText = false;
     if (textItem) {
+      try {
+        text = textDecoder.decode(textItem.bytes);
+      } catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        binaryText = true;
+        downloads.unshift({ name: "secret.bin", mediaType: "application/octet-stream", bytes: textItem.bytes });
+      }
+    }
+    if (text !== undefined) {
       resultIsVisible = false;
       elements.humanResult.hidden = false;
       unsealResult();
-      setResultText(textDecoder.decode(textItem.bytes));
+      setResultText(text);
       describeResult(revealedText);
     } else {
       elements.humanResult.hidden = true;
       sealResult();
     }
-    offerDownloads(items.filter((item) => item !== textItem));
+    offerDownloads(downloads);
     for (const item of items) item.bytes.fill(0);
     envelope.bytes.fill(0);
     elements.revealSecret.hidden = true;
     elements.revealSecret.classList.remove("is-working");
     elements.humanNotice.hidden = true;
-    elements.humanExplanation.textContent = humanExpireAfterReveal
+    const explanation = humanExpireAfterReveal
       ? "Decrypted in this browser."
       : "Decrypted in this browser. The link keeps working until it expires.";
+    elements.humanExplanation.textContent = binaryText
+      ? `The secret contains binary data. Download it to get the original bytes. ${explanation}`
+      : explanation;
     elements.spentNote.hidden = !humanExpireAfterReveal;
     if (humanExpireAfterReveal) wipeCapability();
   } catch (error) {

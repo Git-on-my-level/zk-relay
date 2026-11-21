@@ -8,6 +8,20 @@ fi
 
 tool_version="$1"
 output_dir="dist/tools/$tool_version"
+profile="${ZKR_NOTARY_PROFILE:-zkr-notary}"
+
+if [ "$(uname -s)" = "Darwin" ] && [ "${ZKR_SKIP_APPLE_SIGN:-}" != "1" ]; then
+  if ! notary_error=$(xcrun notarytool history --keychain-profile "$profile" 2>&1 >/dev/null); then
+    printf '%s\n' "$notary_error" >&2
+    case "$notary_error" in
+      *"No Keychain password item found"*)
+        echo "Unlock the maintainer Mac and retry from its signed-in session. A locked screen can hide an existing notary profile." >&2
+        ;;
+    esac
+    exit 1
+  fi
+fi
+
 if [ -n "${GOROOT:-}" ] && [ -x "${GOROOT}/bin/go" ]; then
   path_ver=$(go version 2>/dev/null || true)
   root_ver=$("${GOROOT}/bin/go" version 2>/dev/null || true)
@@ -102,19 +116,6 @@ sign_macos() {
     *G2*) ;;
     *) echo "warning: Developer ID is not from the G2 Sub-CA ($issuer). It cannot sign new releases after 2027-02-01." >&2 ;;
   esac
-
-  profile="${ZKR_NOTARY_PROFILE:-zkr-notary}"
-  err=$(mktemp)
-  if ! xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>"$err"; then
-    cat "$err" >&2
-    if grep -q "No Keychain password item found" "$err"; then
-      team=$(printf '%s\n' "$identity" | sed -n 's/.*(\([A-Z0-9]\{10\}\)).*/\1/p')
-      echo "One-time: xcrun notarytool store-credentials \"$profile\" --team-id ${team:-TEAMID} --apple-id YOUR_APPLE_ID" >&2
-    fi
-    rm -f "$err"
-    exit 1
-  fi
-  rm -f "$err"
 
   # codesign --timestamp fails when the local clock and Apple's timestamp server differ by a few minutes.
   skew=$(sntp time.apple.com 2>/dev/null | awk 'NR==1 { v=$1; gsub(/^\+/, "", v); if (v+0 < 0) v = -(v+0); else v = v+0; print v; exit }' || true)
